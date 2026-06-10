@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="users">
+	<resultMap type="uv" id="usersmap">
+		<id property="userId" column="USER_ID" />
+		<result property="userPass" column="USER_PASS" />
+		<result property="role" column="ROLE" />
+		<result property="userName" column="USER_NAME" />
+		<result property="userBir" column="USER_BIR" />
+		<result property="userEmail" column="USER_EMAIL" />
+		<result property="userTel" column="USER_TEL" />
+		<result property="userAddr1" column="USER_ADDR1" />
+		<result property="userAddr2" column="USER_ADDR2" />
+		<result property="userZip" column="USER_ZIP" />
+	</resultMap>
+
+	<select id="selectAllusers" resultMap="usersmap">
+		select * from users
+	</select>
+
+	<!-- 아이디 중복 체크하기 없으면0이고 있으면 1나옴 SELECT COUNT(1) 은 COUNT(*) 로 써도 같은데 (어차피 
+		1행나옴) 실무적으로는 그냥 가독성으로 1행셀거라고 명확히 보여주는느낌 -->
+	<select id="existsUserId" parameterType="string"
+		resultType="int">
+		SELECT COUNT(*)
+		FROM USERS
+		WHERE USER_ID = #{value}
+	</select>
+
+	<!-- 회원가입 insert 가져올컬럼이 -->
+	<insert id="insertUser" parameterType="uv">
+		INSERT INTO USERS (
+		USER_ID, USER_PASS, ROLE, USER_NAME, USER_BIR,
+		USER_EMAIL, USER_TEL,
+		USER_ADDR1, USER_ADDR2, USER_ZIP
+		) VALUES (
+		#{userId},
+		#{userPass},
+		'USER',
+		#{userName},
+		CASE
+		WHEN #{userBir} IS NULL OR TRIM(#{userBir}) =
+		'' THEN NULL
+		ELSE TO_DATE(#{userBir}, 'YYYY-MM-DD')
+		END,
+		#{userEmail},
+		#{userTel},
+		#{userAddr1},
+		#{userAddr2},
+		#{userZip}
+		)
+	</insert>
+
+	<select id="selectUserById" parameterType="string"
+		resultMap="usersmap">
+		SELECT
+		USER_ID, USER_PASS, ROLE, USER_NAME, USER_BIR,
+		USER_EMAIL, USER_TEL, USER_ADDR1, USER_ADDR2, USER_ZIP
+		FROM USERS
+		WHERE
+		USER_ID = #{value}
+	</select>
+
+
+
+
+	<!-- 로그인 전용: 필요한 컬럼만 조회 -->
+	<select id="selectUserForLogin" parameterType="map"
+		resultMap="usersmap">
+		SELECT *
+		FROM USERS
+		WHERE USER_ID = #{userId}
+		AND USER_PASS = #{userPass}
+	</select>
+
+
+
+	<select id="findUserIdByNameTel" parameterType="map"
+		resultType="string">
+		SELECT user_id
+		FROM users
+		WHERE user_name = #{userName}
+		AND
+		user_tel = #{userTel}
+	</select>
+
+
+
+
+
+
+	<update id="updateUser" parameterType="uv">
+		UPDATE USERS
+		<set>
+			USER_NAME = #{userName},
+			USER_EMAIL = #{userEmail},
+			USER_TEL =
+			#{userTel},
+			USER_ADDR1 = #{userAddr1},
+			USER_ADDR2 = #{userAddr2},
+			USER_ZIP = #{userZip}
+
+			<!-- 생년월일: 값이 들어온 경우에만 변경 -->
+			<if test="userBir != null and userBir != ''">
+				, USER_BIR = TO_DATE(#{userBir}, 'YYYY-MM-DD')
+			</if>
+
+			<!-- 새 비밀번호 입력 시에만 변경 -->
+			<if test="userPass != null and userPass != ''">
+				, USER_PASS = #{userPass}
+			</if>
+		</set>
+		WHERE USER_ID = #{userId}
+	</update>
+
+	<!-- [ADMIN] 회원 탈퇴처리: ROLE을 WITHDRAWN으로 변경 -->
+<update id="withdrawUserAdmin" parameterType="string">
+  UPDATE USERS
+     SET ROLE = 'WITHDRAWN'
+   WHERE USER_ID = #{value}
+     AND UPPER(ROLE) != 'ADMIN'
+     AND UPPER(ROLE) != 'WITHDRAWN'
+</update>
+	
+
+
+	<!-- 이메일 존재 체크 -->
+	<select id="countUserByEmail" parameterType="string"
+		resultType="int">
+		SELECT COUNT(*)
+		FROM USERS
+		WHERE USER_EMAIL = #{value}
+	</select>
+
+	<!-- 이메일로 비밀번호 변경 -->
+	<update id="updateUserPwByEmail" parameterType="map">
+		UPDATE USERS
+		SET USER_PASS = #{newPw}
+		WHERE USER_EMAIL = #{userEmail}
+	</update>
+
+
+
+
+
+	<!-- [ADMIN] 회원 목록(검색 포함) -->
+	<select id="selectAdminUserList" parameterType="map"
+		resultMap="usersmap">
+		SELECT
+		USER_ID,
+		USER_PASS,
+		ROLE,
+		USER_NAME,
+		TO_CHAR(USER_BIR,'YYYY-MM-DD') AS USER_BIR,
+		USER_EMAIL,
+		USER_TEL,
+		USER_ADDR1,
+		USER_ADDR2,
+		USER_ZIP
+		FROM USERS
+		<where>
+			<if test="qUserId != null and qUserId != ''">
+				AND USER_ID LIKE '%' || #{qUserId} || '%'
+			</if>
+			<if test="qUserName != null and qUserName != ''">
+				AND USER_NAME LIKE '%' || #{qUserName} || '%'
+			</if>
+			<if test="qRole != null and qRole != ''">
+				AND UPPER(ROLE) = UPPER(#{qRole})
+			</if>
+		</where>
+		ORDER BY
+			CASE UPPER(ROLE)
+				WHEN 'ADMIN' THEN 1
+				WHEN 'USER' THEN 2
+				WHEN 'WITHDRAWN' THEN 3
+				ELSE 4
+			END,
+			NLSSORT(USER_NAME, 'NLS_SORT=KOREAN_M'),
+			USER_ID
+		</select>
+
+	<!-- [ADMIN] 검색 조건 동일 기준 COUNT -->
+	<select id="countAdminUsers" parameterType="map"
+		resultType="int">
+		SELECT COUNT(*)
+		FROM USERS
+		<where>
+			<if test="qUserId != null and qUserId != ''">
+				AND USER_ID LIKE '%' || #{qUserId} || '%'
+			</if>
+			<if test="qUserName != null and qUserName != ''">
+				AND USER_NAME LIKE '%' || #{qUserName} || '%'
+			</if>
+			<if test="qRole != null and qRole != ''">
+				AND UPPER(ROLE) = UPPER(#{qRole})
+			</if>
+		</where>
+	</select>
+
+	<!-- [ADMIN] 회원 수정(ROLE 포함) / 비밀번호는 입력 시에만 변경 -->
+	<update id="updateUserAdmin" parameterType="uv">
+		UPDATE USERS
+		<set>
+			<if test="role != null and role != ''">
+				ROLE = #{role},
+			</if>
+
+			USER_NAME = #{userName},
+			USER_EMAIL = #{userEmail},
+			USER_TEL = #{userTel},
+			USER_ADDR1 = #{userAddr1},
+			USER_ADDR2 = #{userAddr2},
+			USER_ZIP = #{userZip}
+
+			<if test="userBir != null and userBir != ''">
+				, USER_BIR = TO_DATE(#{userBir}, 'YYYY-MM-DD')
+			</if>
+
+			<if test="userPass != null and userPass != ''">
+				, USER_PASS = #{userPass}
+			</if>
+		</set>
+		WHERE USER_ID = #{userId}
+	</update>
+
+	<delete id="deleteUserAdmin" parameterType="String">
+		delete from users
+		where USER_ID = #{value}
+	</delete>
+
+
+ <!-- 아이디 + 이메일로 비밀번호 변경 -->
+  <update id="updateUserPwByIdEmail" parameterType="map">
+    UPDATE USERS
+    SET USER_PASS = #{newPw}
+    WHERE USER_ID = #{userId}
+      AND USER_EMAIL = #{userEmail}
+  </update>
+
+<select id="matchUserIdEmail" parameterType="map" resultType="int">
+    SELECT COUNT(*)
+    FROM USERS
+    WHERE USER_ID = #{userId}
+      AND USER_EMAIL = #{userEmail}
+  </select>
+
+
+<!-- [USER] 회원 탈퇴처리: 비밀번호가 맞으면 ROLE을 WITHDRAWN으로 변경 -->
+<update id="withdrawUser" parameterType="map">
+  UPDATE USERS
+     SET ROLE = 'WITHDRAWN'
+   WHERE USER_ID = #{userId}
+     AND USER_PASS = #{userPass}
+     AND UPPER(ROLE) != 'ADMIN'
+     AND UPPER(ROLE) != 'WITHDRAWN'
+</update>
+
+
+
+</mapper>

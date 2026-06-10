@@ -1,0 +1,41 @@
+# local secrets
+resources/config/db.properties
+.env
+
+# build outputs
+build/
+target/
+*.class
+
+# logs
+logs/
+*.log
+
+# packaged archives
+*.zip
+*.war
+*.ear
+
+# local libraries / large binaries
+src/main/webapp/WEB-INF/lib/
+
+# uploaded or generated media
+src/main/webapp/upload_img/
+src/main/webapp/assets/images/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.bmp
+*.ico
+
+# IDE / local metadata
+.settings/
+.classpath
+.project
+.idea/
+*.iml
+
+# version-control metadata from local export
+.svn/

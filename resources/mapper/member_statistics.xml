@@ -1,0 +1,575 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  MyBatis Mapper 파일
+
+  - namespace="memberStatistics"
+    Java에서 "memberStatistics.<id>" 형태로 호출되는 식별자 역할을 수행함.
+
+  - 주요 출력 형태
+    KPI: int
+    Trend/Dist: label/value 형태의 통계 결과
+    Table: period/newMembers/activeMembers 형태의 통계 결과
+
+    FROM USERS u  → USERS 테이블 별칭 u
+    FROM ORDERS o → ORDERS 테이블 별칭 o
+    FROM PAYMENT p → PAYMENT 테이블 별칭 p
+
+  - CTE(Common Table Expression)
+    WITH fv AS (...) 형태로 "fv"라는 임시 결과 집합을 생성함.
+    fv.EMAIL, fv.VERIFIED_AT 컬럼은 CTE 내부 SELECT 결과로 만들어짐.
+-->
+
+<mapper namespace="memberStatistics">
+
+  <!--
+    파라미터 규약(입력값 형태 약속)
+
+    - startDate: 'YYYY-MM-DD'
+    - endDate:   'YYYY-MM-DD'
+      endDate 포함을 위해 WHERE 조건에서 "< endDate + 1" 방식을 사용함.
+
+    - unit: 'MONTH' | 'DAY'
+      그룹핑 단위를 월 또는 일로 선택함.
+
+    - type: 'all' | 'new' | 'active' | 'quit'
+      통계 대상을 필터링하는 기준임.
+      all: 기간 내 신규 OR 기간 내 활성
+      new: 기간 내 신규(최초 이메일 인증일 기준)
+      active: 기간 내 활성(주문 PAID 기준)
+      quit: ROLE=WITHDRAWN (탈퇴일 컬럼이 없으므로 누적만 가능)
+  -->
+
+  <!-- =========================
+       0) 공통 SQL 조각
+       ========================= -->
+
+  <!--
+    notAdmin_u
+    USERS 테이블(u)에서 관리자(ADMIN) 역할 제외 조건을 제공함.
+  -->
+  <sql id="notAdmin_u">
+    NVL(UPPER(u.ROLE),'USER') != 'ADMIN'
+  </sql>
+
+  <!--
+    notAdminNotWithdrawn_u
+    USERS 테이블(u)에서 관리자(ADMIN) + 탈퇴(WITHDRAWN) 제외 조건을 제공함.
+    신규/활성 등 "일반 활동 회원" 범위를 잡을 때 사용함.
+  -->
+  <sql id="notAdminNotWithdrawn_u">
+    NVL(UPPER(u.ROLE),'USER') != 'ADMIN'
+    AND NVL(UPPER(u.ROLE),'USER') != 'WITHDRAWN'
+  </sql>
+
+  <!--
+    range_verified
+    fv.VERIFIED_AT 기간 필터 조각
+    fv는 cte_first_verified에서 생성되는 CTE 별칭임.
+    endDate 포함을 위해 "< endDate + 1" 방식 사용함.
+  -->
+  <sql id="range_verified">
+    fv.VERIFIED_AT &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+    AND fv.VERIFIED_AT &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+  </sql>
+
+  <!--
+    range_order
+    o.ORDER_DATE 기간 필터 조각
+    o는 ORDERS 테이블 별칭임.
+    endDate 포함을 위해 "< endDate + 1" 방식 사용함.
+  -->
+  <sql id="range_order">
+    o.ORDER_DATE &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+    AND o.ORDER_DATE &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+  </sql>
+
+  <!--
+    range_paid
+    p.PAID_AT 기간 필터 조각
+    p는 PAYMENT 테이블 별칭임.
+    endDate 포함을 위해 "< endDate + 1" 방식 사용함.
+  -->
+  <sql id="range_paid">
+    p.PAID_AT &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+    AND p.PAID_AT &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+  </sql>
+
+  <!--
+    cte_first_verified
+    EMAIL_VERIFIED 테이블에서 EMAIL별 최초 VERIFIED_AT(최소값)을 구함.
+    결과를 fv(임시 결과 집합)로 명명함.
+
+    fv 컬럼
+    - fv.EMAIL: EMAIL_VERIFIED.EMAIL에서 그룹키
+    - fv.VERIFIED_AT: EMAIL_VERIFIED.VERIFIED_AT의 MIN 결과
+  -->
+  <sql id="cte_first_verified">
+    WITH fv AS (
+      SELECT EMAIL, MIN(VERIFIED_AT) AS VERIFIED_AT
+      FROM EMAIL_VERIFIED
+      GROUP BY EMAIL
+    )
+  </sql>
+
+  <!--
+    grp_key_verified
+    unit에 따라 fv.VERIFIED_AT를 월/일로 그룹핑할 키를 제공함.
+    - DAY: TRUNC(fv.VERIFIED_AT)
+    - MONTH: TRUNC(fv.VERIFIED_AT,'MM')
+  -->
+  <sql id="grp_key_verified">
+    <choose>
+      <when test="unit == 'DAY'">TRUNC(fv.VERIFIED_AT)</when>
+      <otherwise>TRUNC(fv.VERIFIED_AT,'MM')</otherwise>
+    </choose>
+  </sql>
+
+  <!--
+    grp_key_order
+    unit에 따라 o.ORDER_DATE를 월/일로 그룹핑할 키를 제공함.
+    - DAY: TRUNC(o.ORDER_DATE)
+    - MONTH: TRUNC(o.ORDER_DATE,'MM')
+  -->
+  <sql id="grp_key_order">
+    <choose>
+      <when test="unit == 'DAY'">TRUNC(o.ORDER_DATE)</when>
+      <otherwise>TRUNC(o.ORDER_DATE,'MM')</otherwise>
+    </choose>
+  </sql>
+
+  <!--
+    label_fmt
+    unit에 따라 TO_CHAR 포맷 문자열을 선택함.
+    - DAY: 'YYYY-MM-DD'
+    - MONTH: 'YYYY-MM'
+  -->
+  <sql id="label_fmt">
+    <choose>
+      <when test="unit == 'DAY'">'YYYY-MM-DD'</when>
+      <otherwise>'YYYY-MM'</otherwise>
+    </choose>
+  </sql>
+
+  <!--
+    cohort_u
+    type에 따라 USERS(u)에 "대상 회원 범위" 필터를 추가함.
+
+    - new: EMAIL_VERIFIED(최초 인증일) 기준으로 기간 내 신규 여부 확인
+    - active: ORDERS(PAID) 기준으로 기간 내 활성 여부 확인
+    - all: 기간 내 신규 OR 기간 내 활성
+    - quit: USERS.ROLE이 WITHDRAWN
+  -->
+  <sql id="cohort_u">
+    <choose>
+      <when test="type == 'new'">
+        AND EXISTS (
+          SELECT 1
+          FROM (
+            SELECT EMAIL, MIN(VERIFIED_AT) AS VERIFIED_AT
+            FROM EMAIL_VERIFIED
+            GROUP BY EMAIL
+          ) fv2
+          WHERE fv2.EMAIL = u.USER_EMAIL
+            AND fv2.VERIFIED_AT &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+            AND fv2.VERIFIED_AT &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+        )
+      </when>
+
+      <when test="type == 'active'">
+        AND EXISTS (
+          SELECT 1
+          FROM ORDERS o2
+          WHERE o2.USER_ID = u.USER_ID
+            AND o2.ORDER_STATUS = 'PAID'
+            AND o2.ORDER_DATE &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+            AND o2.ORDER_DATE &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+        )
+      </when>
+
+      <when test="type == 'all'">
+        AND (
+          EXISTS (
+            SELECT 1
+            FROM (
+              SELECT EMAIL, MIN(VERIFIED_AT) AS VERIFIED_AT
+              FROM EMAIL_VERIFIED
+              GROUP BY EMAIL
+            ) fv2
+            WHERE fv2.EMAIL = u.USER_EMAIL
+              AND fv2.VERIFIED_AT &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+              AND fv2.VERIFIED_AT &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM ORDERS o2
+            WHERE o2.USER_ID = u.USER_ID
+              AND o2.ORDER_STATUS = 'PAID'
+              AND o2.ORDER_DATE &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+              AND o2.ORDER_DATE &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+          )
+        )
+      </when>
+
+      <when test="type == 'quit'">
+        AND NVL(UPPER(u.ROLE),'USER') = 'WITHDRAWN'
+      </when>
+
+      <otherwise/>
+    </choose>
+  </sql>
+
+  <!--
+    age_bucket_label
+    연령대 구간 라벨 생성 조각
+    distAge에서 SELECT/GROUP BY에 재사용함.
+  -->
+  <sql id="age_bucket_label">
+      CASE
+    WHEN age BETWEEN 20 AND 29 THEN '20대'
+    WHEN age BETWEEN 30 AND 39 THEN '30대'
+    WHEN age BETWEEN 40 AND 49 THEN '40대'
+    WHEN age &gt;= 50 THEN '50대+'
+    ELSE '미입력'
+  END
+  </sql>
+
+  <!--
+    rev_bucket_label
+    결제 합계(totalPaid) 구간 라벨 생성 조각
+    distRevenue에서 SELECT/GROUP BY에 재사용함.
+  -->
+  <sql id="rev_bucket_label">
+  CASE
+    WHEN totalPaid  &gt;= 50000 AND totalPaid &lt; 1000000 THEN '5~100만원'
+    WHEN totalPaid &gt;= 1000000 AND totalPaid &lt; 2000000 THEN '101~200만원'
+    WHEN totalPaid &gt;= 2000000 AND totalPaid &lt; 3000000 THEN '201~300만원'
+    WHEN totalPaid &gt;= 3000000 AND totalPaid &lt; 5000000 THEN '301~500만원'
+    ELSE '기타'
+  END
+</sql>
+
+
+  <!-- =========================
+       0-1) resultMap들 (VO 매핑)
+       ========================= -->
+
+  <!--
+    rmTrendPoint
+    TrendPointVO(label, value)로 매핑됨.
+    trendJoiners, trendActive 결과에 사용됨.
+  -->
+  <resultMap id="rmTrendPoint" type="kr.or.ddit.tct.admin.stats.vo.TrendPointVO">
+    <result property="label" column="label"/>
+    <result property="value" column="value"/>
+  </resultMap>
+
+  <!--
+    rmDistItem
+    DistItemVO(label, value)로 매핑됨.
+    distMemberStatus, distAge, distRevenue 결과에 사용됨.
+  -->
+  <resultMap id="rmDistItem" type="kr.or.ddit.tct.admin.stats.vo.DistItemVO">
+    <result property="label" column="label"/>
+    <result property="value" column="value"/>
+  </resultMap>
+
+  <!--
+    rmPeriodNewActive
+    PeriodNewActiveVO(period, newMembers, activeMembers)로 매핑됨.
+    tablePeriodNewActive 결과에 사용됨.
+  -->
+  <resultMap id="rmPeriodNewActive" type="kr.or.ddit.tct.admin.stats.vo.PeriodNewActiveVO">
+    <result property="period" column="period"/>
+    <result property="newMembers" column="newMembers"/>
+    <result property="activeMembers" column="activeMembers"/>
+  </resultMap>
+
+  <!-- =========================
+       1) KPI (int 반환)
+       ========================= -->
+
+  <!-- 관리자 수 -->
+  <select id="kpiAdminMembers" resultType="int">
+    SELECT COUNT(*)
+    FROM USERS u
+    WHERE NVL(UPPER(u.ROLE),'USER') = 'ADMIN'
+  </select>
+
+  <!-- 전체 회원 수(ADMIN 제외, 탈퇴 포함) -->
+  <select id="kpiTotalMembers" resultType="int">
+    SELECT COUNT(*)
+    FROM USERS u
+    WHERE <include refid="notAdmin_u"/>
+  </select>
+
+  <!-- 탈퇴 회원 수(ADMIN 제외, 누적) -->
+  <select id="kpiWithdrawnMembers" resultType="int">
+    SELECT COUNT(*)
+    FROM USERS u
+    WHERE <include refid="notAdmin_u"/>
+      AND NVL(UPPER(u.ROLE),'USER') = 'WITHDRAWN'
+  </select>
+
+  <!-- 최근 7일 신규(최초 이메일 인증일 기준) -->
+  <select id="kpiNewMembersLast7Days" resultType="int">
+    <include refid="cte_first_verified"/>
+    SELECT COUNT(DISTINCT u.USER_ID)
+    FROM USERS u
+    JOIN fv ON fv.EMAIL = u.USER_EMAIL
+    WHERE <include refid="notAdminNotWithdrawn_u"/>
+      AND fv.VERIFIED_AT &gt;= TRUNC(SYSDATE) - 6
+      AND fv.VERIFIED_AT &lt;  TRUNC(SYSDATE) + 1
+  </select>
+
+  <!-- 기간 내 활성(주문 PAID 기준) -->
+  <select id="kpiActiveMembersByRange" parameterType="map" resultType="int">
+    SELECT COUNT(DISTINCT o.USER_ID)
+    FROM ORDERS o
+    JOIN USERS u ON u.USER_ID = o.USER_ID
+    WHERE <include refid="notAdminNotWithdrawn_u"/>
+      AND o.ORDER_STATUS = 'PAID'
+      AND <include refid="range_order"/>
+  </select>
+
+  <!-- =========================
+       2) 추이(월별/일별) - TrendPointVO
+       ========================= -->
+
+  <!-- 가입 추이(최초 이메일 인증일 기준) -->
+  <select id="trendJoiners" parameterType="map" resultMap="rmTrendPoint">
+    <include refid="cte_first_verified"/>
+    SELECT
+      TO_CHAR(<include refid="grp_key_verified"/>, <include refid="label_fmt"/>) AS label,
+      COUNT(DISTINCT u.USER_ID) AS value
+    FROM USERS u
+    JOIN fv ON fv.EMAIL = u.USER_EMAIL
+    WHERE <include refid="notAdminNotWithdrawn_u"/>
+      AND <include refid="range_verified"/>
+    GROUP BY <include refid="grp_key_verified"/>
+    ORDER BY <include refid="grp_key_verified"/>
+  </select>
+
+  <!-- 활성 추이(주문 PAID 기준) -->
+  <select id="trendActive" parameterType="map" resultMap="rmTrendPoint">
+    SELECT
+      TO_CHAR(<include refid="grp_key_order"/>, <include refid="label_fmt"/>) AS label,
+      COUNT(DISTINCT o.USER_ID) AS value
+    FROM ORDERS o
+    JOIN USERS u ON u.USER_ID = o.USER_ID
+    WHERE <include refid="notAdminNotWithdrawn_u"/>
+      AND o.ORDER_STATUS = 'PAID'
+      AND <include refid="range_order"/>
+    GROUP BY <include refid="grp_key_order"/>
+    ORDER BY <include refid="grp_key_order"/>
+  </select>
+
+  <!-- =========================
+       3) 상세 테이블(기간 단위별 신규+활성) - PeriodNewActiveVO
+       ========================= -->
+
+  <!-- 신규+활성 테이블(월/일 단위로 FULL OUTER JOIN 결합) -->
+  <select id="tablePeriodNewActive" parameterType="map" resultMap="rmPeriodNewActive">
+    <include refid="cte_first_verified"/>
+    SELECT
+      TO_CHAR(COALESCE(n.k, a.k), <include refid="label_fmt"/>) AS period,
+      NVL(n.new_cnt, 0) AS newMembers,
+      NVL(a.act_cnt, 0) AS activeMembers
+    FROM (
+      SELECT <include refid="grp_key_verified"/> AS k,
+             COUNT(DISTINCT u.USER_ID) AS new_cnt
+      FROM USERS u
+      JOIN fv ON fv.EMAIL = u.USER_EMAIL
+      WHERE <include refid="notAdminNotWithdrawn_u"/>
+        AND <include refid="range_verified"/>
+      GROUP BY <include refid="grp_key_verified"/>
+    ) n
+    FULL OUTER JOIN (
+      SELECT <include refid="grp_key_order"/> AS k,
+             COUNT(DISTINCT o.USER_ID) AS act_cnt
+      FROM ORDERS o
+      JOIN USERS u ON u.USER_ID = o.USER_ID
+      WHERE <include refid="notAdminNotWithdrawn_u"/>
+        AND o.ORDER_STATUS = 'PAID'
+        AND <include refid="range_order"/>
+      GROUP BY <include refid="grp_key_order"/>
+    ) a
+    ON a.k = n.k
+    ORDER BY COALESCE(n.k, a.k)
+  </select>
+
+  <!-- =========================
+       4) 도넛: 회원상태 분포 - DistItemVO
+       ========================= -->
+
+  <!--
+    회원 상태 분류 로직
+    - quit 타입: WITHDRAWN이면 '탈퇴'
+    - 기간 내 주문 PAID 존재: '활성'
+    - 기간 내 최초 인증 존재: '신규'
+    - 그 외: '비활동'
+  -->
+  <select id="distMemberStatus" parameterType="map" resultMap="rmDistItem">
+    <include refid="cte_first_verified"/>
+    SELECT status AS label, COUNT(*) AS value
+    FROM (
+      SELECT
+        u.USER_ID,
+        CASE
+          WHEN (#{type} = 'quit' AND NVL(UPPER(u.ROLE),'USER') = 'WITHDRAWN') THEN '탈퇴'
+          WHEN EXISTS (
+            SELECT 1 FROM ORDERS o
+            WHERE o.USER_ID = u.USER_ID
+              AND o.ORDER_STATUS = 'PAID'
+              AND <include refid="range_order"/>
+          ) THEN '활성'
+          WHEN EXISTS (
+            SELECT 1 FROM fv
+            WHERE fv.EMAIL = u.USER_EMAIL
+              AND <include refid="range_verified"/>
+          ) THEN '신규'
+          ELSE '비활동'
+        END AS status
+      FROM USERS u
+      WHERE <include refid="notAdmin_u"/>
+        AND (#{type} = 'quit' OR NVL(UPPER(u.ROLE),'USER') != 'WITHDRAWN')
+        <include refid="cohort_u"/>
+    )
+    GROUP BY status
+    ORDER BY value DESC
+  </select>
+  
+  <select id="distMemberStatus3" parameterType="map" resultMap="rmDistItem">
+  SELECT status AS label, COUNT(*) AS value
+  FROM (
+    SELECT
+      u.USER_ID,
+      CASE
+        WHEN TRIM(UPPER(NVL(u.ROLE,'USER'))) = 'WITHDRAWN' THEN '탈퇴'
+        WHEN EXISTS (
+          SELECT 1
+          FROM ORDERS o
+          WHERE o.USER_ID = u.USER_ID
+            AND o.ORDER_STATUS = 'PAID'
+            AND <include refid="range_order"/>
+        ) THEN '활성'
+        ELSE '비활동'
+      END AS status
+    FROM USERS u
+    WHERE <include refid="notAdmin_u"/>
+    <!-- (선택) 지금 화면의 type 필터를 “대상군”으로 쓰고 싶으면 아래 한 줄 유지 -->
+    <include refid="cohort_u"/>
+  )
+  GROUP BY status
+  ORDER BY value DESC
+</select>
+
+  <!-- =========================
+       5) 도넛: 연령대 분포 - DistItemVO
+       ========================= -->
+
+  <!--
+    age 계산
+    - USER_BIR(생일)로부터 SYSDATE 기준 나이를 계산함.
+    - MONTHS_BETWEEN / 12 후 TRUNC로 정수 나이 계산함.
+  -->
+<select id="distAge" parameterType="map" resultMap="rmDistItem">
+  WITH buckets AS (
+    SELECT 1 AS ord, '20대' AS label FROM dual UNION ALL
+    SELECT 2, '30대' FROM dual UNION ALL
+    SELECT 3, '40대' FROM dual UNION ALL
+    SELECT 4, '50대+' FROM dual UNION ALL
+    SELECT 5, '미입력' FROM dual
+  ),
+  base AS (
+    SELECT
+      u.USER_ID,
+      CASE
+         WHEN u.USER_BIR IS NULL OR u.USER_BIR &lt;= DATE '1900-01-01' or u.USER_BIR > SYSDATE THEN '미입력'
+        ELSE
+          CASE
+            WHEN TRUNC(MONTHS_BETWEEN(SYSDATE, u.USER_BIR) / 12) BETWEEN 20 AND 29 THEN '20대'
+            WHEN TRUNC(MONTHS_BETWEEN(SYSDATE, u.USER_BIR) / 12) BETWEEN 30 AND 39 THEN '30대'
+            WHEN TRUNC(MONTHS_BETWEEN(SYSDATE, u.USER_BIR) / 12) BETWEEN 40 AND 49 THEN '40대'
+            WHEN TRUNC(MONTHS_BETWEEN(SYSDATE, u.USER_BIR) / 12) &gt;= 50 THEN '50대+'
+            ELSE '미입력'
+          END
+      END AS bucket
+    FROM USERS u
+    WHERE <include refid="notAdminNotWithdrawn_u"/>
+    <include refid="cohort_u"/>
+  ),
+  agg AS (
+    SELECT bucket AS label, COUNT(*) AS value
+    FROM base
+    GROUP BY bucket
+  )
+  SELECT
+    b.label AS label,
+    NVL(a.value, 0) AS value
+  FROM buckets b
+  LEFT JOIN agg a ON a.label = b.label
+  ORDER BY b.ord
+</select>
+
+
+  <!-- =========================
+       6) 도넛: 금액별 회원분포 - DistItemVO
+       ========================= -->
+
+  <!--
+    totalPaid 계산
+    - USERS 기준으로 ORDERS, PAYMENT를 LEFT JOIN함.
+    - PAY_STATUS='PAID' 및 기간(range_paid) 내 결제만 합산함.
+  -->
+<select id="distRevenue" parameterType="map" resultMap="rmDistItem">
+  WITH buckets AS (
+    SELECT 1 AS ord, '5~100만원'  AS label FROM dual UNION ALL
+    SELECT 2, '101~200만원' FROM dual UNION ALL
+    SELECT 3, '201~300만원' FROM dual UNION ALL
+    SELECT 4, '301~500만원' FROM dual UNION ALL
+    SELECT 5, '기타' FROM dual
+  ),
+  totals AS (
+    SELECT
+      u.USER_ID,
+      SUM(p.PAY_AMOUNT) AS totalPaid
+    FROM USERS u
+    JOIN ORDERS o  ON o.USER_ID = u.USER_ID
+    JOIN PAYMENT p ON p.ORDER_NO = o.ORDER_NO
+                  AND p.PAY_STATUS = 'PAID'
+                  AND <include refid="range_paid"/>
+    WHERE TRIM(UPPER(NVL(u.ROLE,'USER'))) = 'USER'
+    GROUP BY u.USER_ID
+    HAVING NVL(SUM(p.PAY_AMOUNT), 0) &gt; 0
+  ),
+  tagged AS (
+    SELECT
+      CASE
+        WHEN totalPaid &gt;= 50000  AND totalPaid &lt; 1000000 THEN '5~100만원'
+        WHEN totalPaid &gt;= 1000000 AND totalPaid &lt; 2000000 THEN '101~200만원'
+        WHEN totalPaid &gt;= 2000000 AND totalPaid &lt; 3000000 THEN '201~300만원'
+        WHEN totalPaid &gt;= 3000000 AND totalPaid &lt; 5000000 THEN '301~500만원'
+        ELSE '기타'
+      END AS bucket
+    FROM totals
+  ),
+  agg AS (
+    SELECT bucket AS label, COUNT(*) AS value
+    FROM tagged
+    GROUP BY bucket
+  )
+  SELECT
+    b.label AS label,
+    NVL(a.value, 0) AS value
+  FROM buckets b
+  LEFT JOIN agg a ON a.label = b.label
+  ORDER BY b.ord
+</select>
+
+
+
+</mapper>

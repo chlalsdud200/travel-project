@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="payment">
+
+  <!-- 1) reg_id로 단가(성인 1인 가격) 조회 -->
+  <select id="selectUnitPriceByRegId" parameterType="string" resultType="int">
+    SELECT REG_PRICE
+    FROM REGISTER_PROD
+    WHERE REG_ID = #{value}
+  </select>
+
+  <!-- 2) ORDERS insert -->
+  <insert id="insertOrders" parameterType="map">
+    INSERT INTO ORDERS (ORDER_NO, USER_ID, TOTAL_PRICE, ORDER_DATE, ORDER_STATUS)
+    VALUES (#{orderNo}, #{userId}, #{totalPrice}, SYSDATE, #{status})
+  </insert>
+
+  <!-- 3) ORDER_ITEM insert -->
+  <insert id="insertOrderItem" parameterType="map">
+    INSERT INTO ORDER_ITEM (ORDER_NO, REG_ID, ORDER_QTY, UNIT_PRICE, ITEM_TOTAL)
+    VALUES (#{orderNo}, #{regId}, #{qty}, #{unitPrice}, #{itemTotal})
+  </insert>
+  
+  <insert id="insertPayment" parameterType="map">
+  INSERT INTO PAYMENT (
+    PAY_NO, IMP_UID, PAY_METHOD, PAY_AMOUNT, PAY_STATUS,
+    REQUEST_AT, PAID_AT, FAIL_REASON, ORDER_NO
+  ) VALUES (
+    SEQ_PAY_NO.NEXTVAL,
+    #{impUid},
+    #{payMethod},
+    #{payAmount},
+    #{payStatus},
+    SYSDATE,
+    SYSDATE,
+    #{failReason, jdbcType=VARCHAR},
+    #{orderNo}
+  )
+</insert>
+
+<select id="existsPaymentByImpUid" parameterType="string" resultType="int">
+  SELECT COUNT(*) FROM PAYMENT WHERE IMP_UID = #{value}
+</select>
+
+<!-- 주문 금액/상태 조회 -->
+<select id="selectOrderForVerify" parameterType="string" resultType="map">
+  SELECT ORDER_NO, TOTAL_PRICE, ORDER_STATUS
+  FROM ORDERS
+  WHERE ORDER_NO = #{value}
+</select>
+
+<!-- 결제완료로 상태 변경 -->
+<update id="updateOrderPaid" parameterType="map">
+  UPDATE ORDERS
+  SET ORDER_STATUS = 'PAID'
+  WHERE ORDER_NO = #{orderNo}
+</update>
+
+
+<!-- 취소가능 정보 조회 -->
+<select id="selectCancelableInfo" parameterType="map"
+          resultType="kr.or.ddit.tct.sales.payment.vo.CancelableInfoVO">
+   SELECT
+    o.order_no    AS orderNo,
+    o.user_id     AS userId,
+    p.pay_no      AS payNo,
+    p.pay_status  AS payStatus,
+    p.pay_amount  AS payAmount
+  FROM orders o
+  JOIN payment p ON p.order_no = o.order_no
+  WHERE o.order_no = #{orderNo}
+    AND o.user_id  = #{userId}
+  </select>
+
+<!-- 결제 취소 (paid상태인 주문만) -->
+<update id="updatePaymentCanceled" parameterType="map">
+    UPDATE payment
+    SET pay_status = 'CANCELED'
+    WHERE order_no = #{orderNo}
+      AND pay_status = 'PAID'
+</update>
+
+<!--  주문 취소 -->  
+<update id="updateOrderCanceled" parameterType="string">
+    UPDATE orders
+    SET order_status = 'CANCELED'
+    WHERE order_no = #{value}
+      AND order_status IN ('PAID','CONFIRMED')
+</update>  
+  
+ <!-- 환불 테이블 insert (컬럼/시퀀스명 너희 DB에 맞게) -->
+	<insert id="insertRefund" parameterType="map">
+		INSERT INTO refund (
+		refund_no,
+		pay_no,
+		refund_amount,
+		refund_status,
+		refund_date,
+		reason
+		) VALUES (
+		seq_refund_no.nextval,
+		#{payNo},
+		#{refundAmount},
+		'REQUESTED',
+		SYSDATE,
+		#{reason}
+		)
+	</insert>
+
+
+
+
+
+	  <!-- 마이페이지 결제(구매)내역 조회 dto 맵 생성후 쿼리작성 -->
+  <resultMap id="payHistoryMap" type="kr.or.ddit.tct.mypage.dto.vo.PayHistoryDtoVO">
+    <result property="orderNo"      column="ORDER_NO"/>
+    <result property="orderStatus"  column="ORDER_STATUS"/>
+    <result property="orderDate"    column="ORDER_DATE"/>
+
+    <result property="payNo"        column="PAY_NO"/>
+    <result property="payStatus"    column="PAY_STATUS"/>
+    <result property="payMethod"    column="PAY_METHOD"/>
+    <result property="payAmount"    column="PAY_AMOUNT"/>
+    <result property="paidAt"       column="PAID_AT"/>
+
+    <result property="regId"        column="REG_ID"/>
+    <result property="regTitle"     column="REG_TITLE"/>
+    <result property="startDt"      column="START_DT"/>
+    <result property="endDt"        column="END_DT"/>
+    <result property="orderQty"     column="ORDER_QTY"/>
+    <result property="unitPrice"    column="UNIT_PRICE"/>
+    <result property="itemTotal"    column="ITEM_TOTAL"/>
+
+    <result property="pkgId"        column="PACKAGE_ID"/>
+    <result property="packageTitle" column="PACKAGE_TITLE"/>
+    <result property="themeTitle"   column="THEME_TITLE"/>
+    <result property="ctryName"     column="CTRY_NAME"/>
+    <result property="locName"      column="LOC_NAME"/>
+
+    <result property="imgPath"      column="IMG_PATH"/>
+    <result property="originName"   column="ORIGIN_NAME"/>
+    
+  </resultMap>
+
+  <select id="selectPayHistoryByUserId" parameterType="string" resultMap="payHistoryMap">
+    SELECT
+      o.order_no,
+      o.order_status,
+      TO_CHAR(o.order_date, 'YYYY-MM-DD') AS ORDER_DATE,
+
+      p.pay_no,
+      p.pay_status,
+      p.pay_method,
+      p.pay_amount,
+      TO_CHAR(p.paid_at, 'YYYY-MM-DD') AS PAID_AT,
+
+      oi.reg_id,
+      oi.order_qty,
+      oi.unit_price,
+      oi.item_total,
+
+      r.reg_title,
+      TO_CHAR(r.start_dt, 'YYYY-MM-DD') AS START_DT,
+      TO_CHAR(r.end_dt,   'YYYY-MM-DD') AS END_DT,
+
+      pk.package_id,
+      pk.package_title,
+
+      c.ctry_name,
+      l.loc_name,
+      th.theme_title,
+
+      i.img_path,
+      i.origin_name
+    FROM orders o
+    JOIN order_item oi ON oi.order_no = o.order_no
+    JOIN payment p     ON p.order_no  = o.order_no
+    JOIN register_prod r ON r.reg_id  = oi.reg_id
+    JOIN packages pk     ON pk.package_id = r.package_id
+    JOIN country c       ON c.ctry_id = pk.ctry_id
+    JOIN location l      ON l.loc_id  = pk.loc_id
+    LEFT JOIN p_theme th ON th.theme_id = pk.theme_id
+
+    LEFT JOIN img_mapping m
+      ON m.reg_id = r.reg_id
+     AND m.view_sequence = (
+        SELECT MIN(m2.view_sequence)
+        FROM img_mapping m2
+        WHERE m2.reg_id = r.reg_id
+     )
+    LEFT JOIN img_storage i ON i.img_no = m.img_no
+
+    WHERE o.user_id = #{value}
+	AND p.pay_status IN ('PAID', 'CANCELED')
+    ORDER BY p.paid_at DESC, o.order_date DESC
+  </select>
+	
+
+	<!-- =========================
+     관리자 결제관리 (서버렌더)
+     - 아래 2개(selectAdminPaymentList, countAdminPaymentList)는
+       payment.xml 전체에서 "각각 1개씩만" 존재해야 함
+     ========================= -->
+
+<!-- 관리자 결제관리: 목록(페이징/필터) -->
+<select id="selectAdminPaymentList"
+        parameterType="kr.or.ddit.tct.admin.payments.vo.AdminPaymentSearchVO"
+        resultType="kr.or.ddit.tct.admin.payments.vo.AdminPaymentVO">
+
+  WITH base AS (
+    SELECT
+      o.ORDER_NO,
+      o.USER_ID,
+      u.USER_NAME,
+
+      MIN(oi.REG_ID)    AS REG_ID,
+      MIN(rp.REG_TITLE) AS REG_TITLE,
+
+      MAX(p.PAY_NO) AS PAY_NO,
+      NVL(MAX(p.PAY_AMOUNT), MAX(o.TOTAL_PRICE)) AS PAY_AMOUNT,
+      NVL(MAX(p.PAID_AT), MAX(o.ORDER_DATE))     AS PAID_AT_DT,
+      COALESCE(MAX(p.PAY_STATUS), MAX(o.ORDER_STATUS), 'PENDING') AS PAY_STATUS
+
+    FROM ORDERS o
+    JOIN USERS u ON u.USER_ID = o.USER_ID
+    LEFT JOIN PAYMENT p ON p.ORDER_NO = o.ORDER_NO
+    LEFT JOIN ORDER_ITEM oi ON oi.ORDER_NO = o.ORDER_NO
+    LEFT JOIN REGISTER_PROD rp ON rp.REG_ID = oi.REG_ID
+    WHERE 1=1
+
+    <if test="status != null and status != ''">
+      <choose>
+        <when test="status == 'REFUND' or status == '환불'">
+          AND p.PAY_NO IS NOT NULL
+          AND EXISTS (SELECT 1 FROM REFUND r WHERE r.PAY_NO = p.PAY_NO)
+        </when>
+        <when test="status == 'CANCEL' or status == '취소'">
+          AND COALESCE(p.PAY_STATUS, o.ORDER_STATUS, 'PENDING') IN ('CANCEL','CANCELED','CANCELLED')
+        </when>
+        <otherwise>
+          AND COALESCE(p.PAY_STATUS, o.ORDER_STATUS, 'PENDING') = #{status}
+        </otherwise>
+      </choose>
+    </if>
+
+    <if test="from != null and from != ''">
+      AND NVL(p.PAID_AT, o.ORDER_DATE) &gt;= TO_DATE(#{from}, 'YYYY-MM-DD')
+    </if>
+
+    <if test="to != null and to != ''">
+      AND NVL(p.PAID_AT, o.ORDER_DATE) &lt; TO_DATE(#{to}, 'YYYY-MM-DD') + 1
+    </if>
+
+    GROUP BY o.ORDER_NO, o.USER_ID, u.USER_NAME
+  )
+  SELECT *
+  FROM (
+    SELECT
+      b.ORDER_NO  AS orderNo,
+      b.USER_ID   AS userId,
+      b.USER_NAME AS userName,
+      b.REG_ID    AS regId,
+      b.REG_TITLE AS regTitle,
+      b.PAY_AMOUNT AS payAmount,
+      TO_CHAR(b.PAID_AT_DT, 'YYYY-MM-DD HH24:MI') AS paidAt,
+      CASE
+
+        WHEN b.PAY_NO IS NOT NULL
+
+             AND EXISTS (SELECT 1 FROM REFUND r WHERE r.PAY_NO = b.PAY_NO) THEN 'REFUND'
+
+        ELSE b.PAY_STATUS
+
+      END AS payStatus,
+      CASE
+        WHEN b.PAY_NO IS NOT NULL
+             AND EXISTS (SELECT 1 FROM REFUND r WHERE r.PAY_NO = b.PAY_NO) THEN '환불'
+        WHEN b.PAY_STATUS IN ('CANCEL','CANCELED','CANCELLED') THEN '취소'
+        ELSE '-'
+      END AS cancelRefund,
+      ROW_NUMBER() OVER (ORDER BY b.PAID_AT_DT DESC, b.ORDER_NO DESC) rn
+    FROM base b
+  )
+  WHERE rn BETWEEN (#{offset} + 1) AND (#{offset} + #{limit})
+
+</select>
+
+<!-- 관리자 결제관리: 총 건수 -->
+<select id="countAdminPaymentList"
+        parameterType="kr.or.ddit.tct.admin.payments.vo.AdminPaymentSearchVO"
+        resultType="int">
+
+  WITH base AS (
+    SELECT o.ORDER_NO
+    FROM ORDERS o
+    JOIN USERS u ON u.USER_ID = o.USER_ID
+    LEFT JOIN PAYMENT p ON p.ORDER_NO = o.ORDER_NO
+    WHERE 1=1
+
+    <if test="status != null and status != ''">
+      <choose>
+        <when test="status == 'REFUND' or status == '환불'">
+          AND p.PAY_NO IS NOT NULL
+          AND EXISTS (SELECT 1 FROM REFUND r WHERE r.PAY_NO = p.PAY_NO)
+        </when>
+        <when test="status == 'CANCEL' or status == '취소'">
+          AND COALESCE(p.PAY_STATUS, o.ORDER_STATUS, 'PENDING') IN ('CANCEL','CANCELED','CANCELLED')
+        </when>
+        <otherwise>
+          AND COALESCE(p.PAY_STATUS, o.ORDER_STATUS, 'PENDING') = #{status}
+        </otherwise>
+      </choose>
+    </if>
+
+    <if test="from != null and from != ''">
+      AND NVL(p.PAID_AT, o.ORDER_DATE) &gt;= TO_DATE(#{from}, 'YYYY-MM-DD')
+    </if>
+
+    <if test="to != null and to != ''">
+      AND NVL(p.PAID_AT, o.ORDER_DATE) &lt; TO_DATE(#{to}, 'YYYY-MM-DD') + 1
+    </if>
+
+    GROUP BY o.ORDER_NO
+  )
+  SELECT COUNT(*) FROM base
+
+</select>
+	
+  <!-- [D-DAY 위젯] 로그인 유저의 "가장 가까운 출발 상품 2개" 조회 -->
+  <!-- 존재이유: 헤더(공통영역)에서 어디 페이지든 위젯을 그리려면, "유저 기준 2건"을 한 번에 주는 API가 필요함 -->
+  <select id="selectUpcomingTripsWidget" parameterType="map"
+          resultType="kr.or.ddit.tct.comm.vo.DdayTripVO">
+
+    SELECT regId, regTitle, startYmd, dday
+    FROM (
+      SELECT
+        oi.reg_id                               AS regId,      <!-- 어떤 상품(reg_prod)을 샀는지 식별 -->
+        r.reg_title                             AS regTitle,   <!-- 위젯 카드에 찍을 상품명 -->
+        TO_CHAR(r.start_dt, 'YYYY-MM-DD')       AS startYmd,   <!-- JS에서 달력 그리기 쉬우라고 문자열로 -->
+        (TRUNC(r.start_dt) - TRUNC(SYSDATE))    AS dday,       <!-- D-day 계산: 출발일 - 오늘(자정 기준) -->
+        ROW_NUMBER() OVER (ORDER BY r.start_dt ASC) AS rn      <!-- 가까운 순으로 1,2,... 번호 매김 -->
+      FROM orders o
+      JOIN order_item oi   ON oi.order_no = o.order_no         <!-- 주문에 어떤 상품이 들어있는지 -->
+      LEFT JOIN payment p  ON p.order_no  = o.order_no         <!-- 결제 상태(없으면 주문상태로 보정) -->
+      JOIN register_prod r ON r.reg_id    = oi.reg_id          <!-- 출발일(start_dt)이 여기 있음 -->
+
+      WHERE o.user_id = #{userId}                              <!-- 로그인 유저의 주문만 -->
+        AND NVL(p.pay_status, o.order_status) = 'PAID'         <!-- 결제 완료(취소 제외) -->
+        AND r.start_dt IS NOT NULL
+        AND TRUNC(r.start_dt) >= TRUNC(SYSDATE)                <!-- 오늘/미래 출발만 (과거 여행은 위젯에서 제외) -->
+    )
+    WHERE rn &lt;= #{limit}                                       <!-- 최대 2개만 -->
+    ORDER BY dday ASC                                          <!-- 안전하게 가까운 순 정렬 -->
+
+  </select>
+
+
+
+<!-- [D-DAY 팝업] 로그인 유저의 "출발 0~N일(기본 5일) 이내 + 가장 가까운 1개" 조회 -->
+<!-- 존재이유: 홈페이지 방문 시 출발 임박 여행을 팝업으로 강조해서 체크리스트를 바로 보여주기 위함 -->
+<select id="selectUpcomingTripPopup" parameterType="map"
+        resultType="kr.or.ddit.tct.comm.vo.DdayPopupVO">
+
+  SELECT
+  orderNo, regId, regTitle, packageTitle,
+  startYmd, endYmd, totalPrice, dday,
+  hotelName, hotelTel, hotelCnt, userId
+FROM (
+
+    SELECT
+      o.order_no                               AS orderNo,      <!-- 주문번호 -->
+      o.user_id AS userId,
+      oi.reg_id                                AS regId,        <!-- 등록상품번호 -->
+      r.reg_title                              AS regTitle,     <!-- 상품명 -->
+      pk.package_title                         AS packageTitle, <!-- 패키지 타이틀(재사용성 설명 포인트) -->
+      TO_CHAR(r.start_dt, 'YYYY-MM-DD')        AS startYmd,     <!-- 출발일 -->
+      TO_CHAR(r.end_dt,   'YYYY-MM-DD')        AS endYmd,       <!-- 도착일 -->
+      NVL(p.pay_amount, o.total_price)         AS totalPrice,   <!-- 결제 금액(결제 테이블 우선, 없으면 주문금액) -->
+      (TRUNC(r.start_dt) - TRUNC(SYSDATE))     AS dday,         <!-- D-day -->
+      ht.hotel_name                            AS hotelName,    <!-- 대표 호텔명 -->
+      ht.hotel_tel                             AS hotelTel,     <!-- 대표 호텔 전화 -->
+      NVL(ht.hotel_cnt, 0)                     AS hotelCnt,     <!-- 호텔 총 개수(요약 표시용) -->
+      ROW_NUMBER() OVER (
+        ORDER BY r.start_dt ASC, o.order_date ASC, o.order_no ASC, oi.reg_id ASC
+      ) AS rn                                                  <!-- 가장 가까운 1건만 뽑기 위한 번호 -->
+
+    FROM orders o
+    JOIN order_item oi   ON oi.order_no = o.order_no
+    LEFT JOIN payment p  ON p.order_no  = o.order_no
+    JOIN register_prod r ON r.reg_id    = oi.reg_id
+    JOIN packages pk     ON pk.package_id = r.package_id
+
+    <!-- 호텔 요약: 패키지에 연결된 호텔 중 "가장 먼저 등장하는 1곳" + "호텔 총 개수" -->
+    <!-- 존재이유: 팝업 상단에 호텔정보를 1줄로 요약해 보여주기 위함(대표 호텔명 + 외 N곳) -->
+    LEFT JOIN (
+      SELECT
+        fh.package_id,
+        fh.hotel_name,
+        fh.hotel_tel,
+        hc.hotel_cnt
+      FROM (
+        SELECT
+          b.package_id,
+          h.hotel_name,
+          h.hotel_tel,
+          ROW_NUMBER() OVER (
+            PARTITION BY b.package_id
+            ORDER BY b.day_no ASC, b.seq ASC
+          ) AS rn
+        FROM (
+          SELECT
+            pi.package_id             AS package_id,  <!-- 어떤 패키지의 일정인지 -->
+            TO_NUMBER(pi.by_date)     AS day_no,      <!-- 1일차/2일차... (대표 호텔을 "가장 먼저"로 뽑기 위함) -->
+            pi.pitem_no               AS seq,         <!-- 같은 날 여러 항목이면 가장 앞 순서를 대표로 -->
+            pi.hotel_id               AS hotel_id     <!-- 실제 호텔을 식별 -->
+          FROM package_item pi
+          WHERE pi.hotel_id IS NOT NULL               <!-- 호텔이 있는 일정만 대상으로 -->
+        ) b
+        JOIN hotels h ON h.hotel_id = b.hotel_id      <!-- hotel_id로 호텔 상세(이름/전화) 조인 -->
+      ) fh
+      JOIN (
+        SELECT
+          package_id,
+          COUNT(DISTINCT hotel_id) AS hotel_cnt       <!-- 패키지별 호텔 개수(요약용) -->
+        FROM package_item
+        WHERE hotel_id IS NOT NULL
+        GROUP BY package_id
+      ) hc ON hc.package_id = fh.package_id
+      WHERE fh.rn = 1                                 <!-- 패키지별 "첫 번째 호텔"만 남김 -->
+    ) ht
+      ON ht.package_id = r.package_id
+
+
+    WHERE o.user_id = #{userId}                                <!-- 로그인 유저만 -->
+      AND NVL(p.pay_status, o.order_status) = 'PAID'           <!-- 결제 완료만 -->
+      AND r.start_dt IS NOT NULL
+      AND TRUNC(r.start_dt) >= TRUNC(SYSDATE)                  <!-- 오늘/미래 출발만 -->
+      AND (TRUNC(r.start_dt) - TRUNC(SYSDATE)) BETWEEN 0 AND #{dayWindow}  <!-- 출발 0~N일 이내(기본 5일) -->
+  )
+  WHERE rn = 1                                                 <!-- 가장 가까운 1건만 -->
+
+</select>
+
+</mapper>

@@ -1,0 +1,137 @@
+<%@ page language="java" contentType="text/html; charset=UTF-8"
+	pageEncoding="UTF-8"%>
+
+<%-- /WEB-INF/views/admin/adminSidebar.jspf --%>
+
+<%--
+  관리자 메뉴 아이콘(<i class="fas ...">)은 Font Awesome CSS가 로드돼야 보입니다.
+  일부 admin 페이지(payments.jsp 등)에서 head에 Font Awesome 링크가 빠져 아이콘이 안 보이는 문제가 있어,
+  sidebar include 파일에서 한 번에 로드하도록 통일합니다.
+
+  ✅ 이 파일만 include 해도 아이콘이 보이게 됨
+  - (선택) 각 JSP의 <head>에 있던 Font Awesome 링크는 중복이 싫으면 제거해도 됩니다.
+--%>
+
+<link rel="stylesheet"
+	href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+	referrerpolicy="no-referrer" />
+
+<%
+// 컨트롤러(or JSP 상단)에서 request.setAttribute("adminActive","dashboard") 처럼 전달
+String _tctActive = (request.getAttribute("adminActive") == null) ? ""
+		: String.valueOf(request.getAttribute("adminActive"));
+
+final String _tctItemBase = "flex items-center p-3 text-sm rounded-lg";
+final String _tctItemOn = "bg-indigo-600 text-white cursor-default";
+final String _tctItemOff = "hover:bg-slate-800 transition text-slate-300 hover:text-white";
+
+// ✅ 상품관리 서브메뉴 상태
+boolean _prodOpen = "products".equals(_tctActive);
+String _prodTab = (String) request.getAttribute("tab");
+if (_prodTab == null || _prodTab.isBlank())
+	_prodTab = request.getParameter("tab");
+if (_prodTab == null || _prodTab.isBlank())
+	_prodTab = "list";
+
+String _subBase = "block p-2 text-xs rounded-lg transition";
+String _subOn = "text-indigo-300 font-extrabold bg-slate-800/40";
+String _subOff = "text-slate-400 hover:text-indigo-400 hover:bg-slate-800/30";
+
+// ctx 변수 선언(금지): include 시 Duplicate local variable ctx 방지
+%>
+
+<aside
+	class="w-[240px] lg:w-64 bg-slate-900 text-white flex flex-col shadow-xl">
+	<div class="p-6">
+		<h1 class="text-xl font-extrabold tracking-wider text-indigo-400">ADMIN
+			PANEL</h1>
+	</div>
+
+	<nav class="flex-1 px-4 space-y-2 overflow-y-auto">
+		<p class="text-xs text-slate-500 font-bold px-2 uppercase mb-2">Main</p>
+
+		<!-- 사이트 메인으로 이동 -->
+		<a href="<%=request.getContextPath()%>/mainPage.do"
+			class="<%=_tctItemBase%> <%="home".equals(_tctActive) ? _tctItemOn : _tctItemOff%>">
+			<i class="fas fa-house w-5"></i> <span class="ml-3 font-medium">사이트
+				메인</span>
+		</a> <a
+			href="<%="dashboard".equals(_tctActive) ? "#" : (request.getContextPath() + "/admin/dashboard.do")%>"
+			class="<%=_tctItemBase%> <%="dashboard".equals(_tctActive) ? _tctItemOn : _tctItemOff%>">
+			<i class="fas fa-th-large w-5"></i> <span class="ml-3 font-semibold">대시보드</span>
+		</a> <a href="<%=request.getContextPath()%>/admin/members.do"
+			class="<%=_tctItemBase%> <%="members".equals(_tctActive) ? _tctItemOn : _tctItemOff%>">
+			<i class="fas fa-users w-5"></i> <span class="ml-3 font-medium">회원관리</span>
+		</a>
+
+		<!-- ✅ 상품관리(부모 + 하위메뉴 3개) -->
+		<div class="space-y-1">
+			<!-- 부모: 상품관리 -->
+			<a
+				href="<%=request.getContextPath()%>/admin/prod/adminProducts.do?tab=list"
+				class="<%=_tctItemBase%> <%="products".equals(_tctActive) ? _tctItemOn : _tctItemOff%>">
+				<i class="fas fa-box w-5"></i> <span class="ml-3 font-medium flex-1">상품관리</span>
+				<i
+				class="fas fa-chevron-down text-[11px] opacity-70 <%=_prodOpen ? "" : "rotate-[-90deg]"%>"></i>
+			</a>
+
+			<!-- 하위 메뉴 -->
+			<div class="pl-10 space-y-1 <%=_prodOpen ? "" : "hidden"%>">
+				<a
+					href="<%=request.getContextPath()%>/admin/prod/adminProducts.do?tab=list"
+					class="<%=_subBase%> <%="list".equals(_prodTab) ? _subOn : _subOff%>">
+					ㄴ 등록상품 관리 </a> <a
+					href="<%=request.getContextPath()%>/admin/prod/adminProducts.do?tab=create"
+					class="<%=_subBase%> <%="create".equals(_prodTab) ? _subOn : _subOff%>">
+					ㄴ 패키지 관리 </a> <a
+					href="<%=request.getContextPath()%>/admin/prod/adminProducts.do?tab=create_item"
+					class="<%=_subBase%> <%="create_item".equals(_prodTab) ? _subOn : _subOff%>">
+					ㄴ 아이템 관리 </a>
+
+			</div>
+		</div>
+
+
+
+		<a href="<%=request.getContextPath()%>/admin/boards.do"
+			class="<%=_tctItemBase%> <%="boards".equals(_tctActive) ? _tctItemOn : _tctItemOff%>">
+			<i class="fas fa-clipboard-list w-5"></i> <span
+			class="ml-3 font-medium">게시판관리</span>
+		</a> <a href="<%=request.getContextPath()%>/admin/payments.do"
+			class="<%=_tctItemBase%> <%="payments".equals(_tctActive) ? _tctItemOn : _tctItemOff%>">
+			<i
+			class="fas fa-credit-card w-5 <%="payments".equals(_tctActive) ? "" : "text-red-400"%>"></i>
+			<span class="ml-3 font-medium text-[13px]">결제관리</span>
+		</a>
+
+		<div class="pt-4 mt-4 border-t border-slate-800">
+			<p class="text-xs text-slate-500 font-bold px-2 uppercase mb-2">Analysis</p>
+			<div class="space-y-1">
+				<div
+					class="flex items-center justify-between p-3 text-sm rounded-lg text-slate-300">
+					<div class="flex items-center">
+						<i class="fas fa-chart-line w-5"></i> <span
+							class="ml-3 font-medium">통계</span>
+					</div>
+				</div>
+				<div class="pl-10 space-y-1">
+
+					<!-- 매출통계=============================================  -->
+					<a href="<%=request.getContextPath()%>/admin/stats/sales.do"
+						class="block p-2 text-xs text-slate-400 hover:text-indigo-400 transition">ㄴ
+						매출통계</a>
+
+					<%-- <a href="<%= request.getContextPath() %>/admin/stats/salesMonthly.do"
+   class="block p-2 text-xs rounded-lg transition <%= "salesMonthly".equals(_tctActive) ? "text-indigo-300 font-extrabold bg-slate-800/40" : "text-slate-400 hover:text-indigo-400 hover:bg-slate-800/30" %>">
+  ㄴ 매출통계
+</a> --%>
+					<!--   =======================================================  -->
+					<a href="<%=request.getContextPath()%>/admin/stats/members.do"
+						class="block p-2 text-xs text-slate-400 hover:text-indigo-400 transition">ㄴ
+						회원통계</a>
+				</div>
+			</div>
+		</div>
+
+	</nav>
+</aside>

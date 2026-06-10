@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="adprod">
+
+	<resultMap type="regprodvo" id="regprodvoMap">
+		<id property="regId" column="REG_ID" />
+		<result property="pkgId" column="PACKAGE_ID" />
+		<result property="regTitle" column="REG_TITLE" />
+		<result property="regDate" column="REG_DATE" />
+		<result property="regPrice" column="REG_PRICE" />
+		<result property="regQty" column="REG_QTY" />
+		<result property="forSale" column="FOR_SALE" />
+		<result property="startDt" column="START_DT" />
+		<result property="endDt" column="END_DT" />
+		<result property="saleStartDt" column="SALE_START_DT" />
+		<result property="saleEndDt" column="SALE_END_DT" />
+		<result property="highlight" column="HIGHLIGHT" />
+		<result property="descriptionA" column="DESCRIPTION_A" />
+		<result property="descriptionB" column="DESCRIPTION_B" />
+	</resultMap>
+
+	<select id="adSelectRegProdAll" resultMap="regprodvoMap">
+		SELECT REG_ID,
+		PACKAGE_ID, REG_TITLE, REG_DATE, REG_PRICE,
+		REG_QTY, TRIM(FOR_SALE) AS
+		FOR_SALE, START_DT, END_DT, SALE_START_DT,
+		SALE_END_DT, HIGHLIGHT,
+		DESCRIPTION_A, DESCRIPTION_B
+		FROM REGISTER_PROD
+		ORDER BY 1 DESC
+	</select>
+
+
+	<select id="adSelectAdRegImg" resultType="adregimgdtovo"
+		parameterType="string">
+		SELECT m.MAP_NO, m.REG_ID, m.IMG_NO, s.IMG_PATH,
+		s.ORIGIN_NAME, m.VIEW_SEQUENCE, s.FILE_SIZE
+		FROM IMG_MAPPING m
+		INNER
+		JOIN IMG_STORAGE s ON(m.IMG_NO = s.IMG_NO)
+		WHERE m.REG_ID = #{value}
+		ORDER BY m.VIEW_SEQUENCE ASC, m.MAP_NO ASC
+	</select>
+
+	<select id="selectImgNoByPaths" parameterType="java.util.List"
+		resultType="java.util.Map">
+		SELECT IMG_PATH, IMG_NO
+		FROM IMG_STORAGE
+		WHERE IMG_PATH IN
+		<foreach collection="list" item="p" open="(" separator=","
+			close=")">
+			#{p}
+		</foreach>
+	</select>
+
+	<!-- IMG_STORAGE: imgPath로 조회 -->
+	<select id="searchFromImgStorageByPath" parameterType="string"
+		resultType="kr.or.ddit.tct.img.vo.ImgStorageVO">
+		SELECT IMG_NO, IMG_PATH, ORIGIN_NAME, FILE_SIZE
+		FROM
+		IMG_STORAGE
+		WHERE IMG_PATH = #{imgPath}
+	</select>
+
+	<!-- IMG_STORAGE insert -->
+	<insert id="insertStorage"
+		parameterType="kr.or.ddit.tct.img.vo.ImgStorageVO">
+		<selectKey keyProperty="imgNo" resultType="int"
+			order="BEFORE">
+			SELECT SEQ_IMG_NO.NEXTVAL FROM DUAL
+		</selectKey>
+		INSERT INTO IMG_STORAGE (IMG_NO, IMG_PATH, ORIGIN_NAME, FILE_SIZE)
+		VALUES (#{imgNo}, #{imgPath}, #{originName}, #{fileSize})
+	</insert>
+
+	<!-- IMG_MAPPING 중복 체크 -->
+	<select id="countMapping" parameterType="map" resultType="int">
+		SELECT
+		COUNT(*)
+		FROM IMG_MAPPING
+		WHERE REG_ID = #{regId}
+		AND IMG_NO = #{imgNo}
+	</select>
+
+	<!-- IMG_MAPPING insert -->
+	<insert id="insertMapping" parameterType="map">
+		<selectKey keyProperty="mapNo" resultType="int"
+			order="BEFORE">
+			SELECT SEQ_MAP_NO.NEXTVAL FROM DUAL
+		</selectKey>
+		INSERT INTO IMG_MAPPING (MAP_NO, REG_ID, IMG_NO, VIEW_SEQUENCE)
+		VALUES
+		(#{mapNo}, #{regId}, #{imgNo}, #{viewSequence})
+	</insert>
+
+	<!-- IMG_MAPPING insert -->
+	<delete id="deleteRegImgMappingByMapNo" parameterType="map">
+		DELETE FROM IMG_MAPPING
+		WHERE REG_ID = #{regId}
+		AND MAP_NO IN
+		<foreach collection="mapNoList" item="no" open="("
+			separator="," close=")">
+			#{no}
+		</foreach>
+	</delete>
+
+	<update id="updateRegImgViewSequence" parameterType="map">
+		UPDATE
+		IMG_MAPPING
+		SET VIEW_SEQUENCE = #{viewSequence}
+		WHERE REG_ID = #{regId}
+		AND MAP_NO = #{mapNo}
+	</update>
+
+	<select id="adSelectPkgSuggest" parameterType="map"
+		resultType="kr.or.ddit.tct.product.pkg.vo.PkgVO">
+
+		SELECT *
+		FROM (
+		SELECT
+		p.PACKAGE_ID AS packageId,
+		p.PACKAGE_TITLE AS
+		packageTitle,
+		p.CTRY_ID AS ctryId,
+		p.LOC_ID AS locId,
+		p.THEME_ID AS
+		themeId
+		FROM PACKAGES p
+		<where>
+			<if test="q != null and q != ''">
+				(
+				UPPER(p.PACKAGE_ID) LIKE '%' || UPPER(#{q}) || '%'
+				OR
+				UPPER(p.PACKAGE_TITLE) LIKE '%' || UPPER(#{q}) || '%'
+				)
+			</if>
+		</where>
+		ORDER BY p.PACKAGE_ID DESC
+		)
+		WHERE ROWNUM &lt;= #{limit}
+
+	</select>
+
+	<insert id="adInsertRegProd" parameterType="regprodvo">
+
+		INSERT INTO
+		REGISTER_PROD (
+		REG_ID, PACKAGE_ID, REG_TITLE,
+		REG_DATE,
+		REG_PRICE,
+		REG_QTY, FOR_SALE,
+		START_DT, END_DT,
+		SALE_START_DT,
+		SALE_END_DT,
+		HIGHLIGHT, DESCRIPTION_A, DESCRIPTION_B
+		) VALUES (
+		#{regId},
+		#{pkgId},
+		#{regTitle},
+		SYSDATE,
+		#{regPrice},
+		#{regQty},
+		#{forSale},
+		#{startDt},
+		#{endDt},
+		#{saleStartDt},
+		#{saleEndDt},
+		#{highlight},
+		#{descriptionA},
+		#{descriptionB}
+		)
+
+	</insert>
+	<update id="adUpdateRegProd" parameterType="regprodvo">
+		UPDATE REGISTER_PROD
+		SET PACKAGE_ID = #{pkgId}
+		, REG_TITLE = #{regTitle}
+		, REG_PRICE =
+		#{regPrice}
+		, REG_QTY = #{regQty}
+		, FOR_SALE = #{forSale}
+		, START_DT =
+		#{startDt}
+		, END_DT = #{endDt}
+		, SALE_START_DT = #{saleStartDt}
+		,
+		SALE_END_DT = #{saleEndDt}
+		, HIGHLIGHT = #{highlight}
+		, DESCRIPTION_A =
+		#{descriptionA}
+		, DESCRIPTION_B = #{descriptionB}
+		WHERE REG_ID =
+		#{regId}
+	</update>
+
+	<select id="selectPackageItemHeader" parameterType="string"
+		resultType="kr.or.ddit.tct.admin.prod.packageitem.dto.AdRegPackageItemDto$Header">
+		SELECT
+		r.reg_id AS regId,
+		p.package_id AS packageId,
+		p.package_title AS packageTitle,
+		p.theme_id AS themeId,
+		t.theme_title AS
+		themeTitle
+		FROM register_PROD r
+		JOIN packageS p
+		ON p.package_id =
+		r.package_id
+		JOIN p_theme t
+		ON t.theme_id = p.theme_id
+		WHERE r.reg_id =
+		#{regId}
+	</select>
+
+	<select id="selectPackageItemRows" parameterType="string"
+		resultType="kr.or.ddit.tct.admin.prod.packageitem.dto.AdRegPackageItemDto$Item">
+		SELECT
+		pi.item_id AS itemId,
+		i.item_title AS itemTitle,
+		l.loc_id AS locId,
+		l.loc_name AS locName,
+		c.ctry_id AS ctryId,
+		c.ctry_name AS ctryName,
+		pi.by_date AS byDate
+		FROM register_PROD r
+		JOIN packageS p
+		ON p.package_id = r.package_id
+		JOIN package_item pi
+		ON pi.package_id = p.package_id
+		JOIN item i
+		ON i.item_id = pi.item_id
+		LEFT JOIN location l
+		ON l.loc_id = i.loc_id
+		LEFT JOIN country c
+		ON c.ctry_id = l.ctry_id
+		WHERE r.reg_id = #{regId}
+		ORDER BY pi.by_date
+	</select>
+
+
+	<select id="selectCtryIdByLocId" parameterType="string"
+		resultType="string">
+		SELECT ctry_id
+		FROM location
+		WHERE loc_id = #{locId}
+	</select>
+</mapper>
+

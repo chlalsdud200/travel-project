@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="boardHome">
+
+  <!-- 1) 공지 Top N (QNA_BOARD, IS_NOTICE='Y') -->
+  <select id="selectNoticeTop" parameterType="int" resultType="bhvo">
+    SELECT postType, postNo, viewNo, title, userId, writerName, writerRole, createdAt, hit
+    FROM (
+      SELECT
+        'NOTICE' AS postType,
+        q.QNA_NO AS postNo,
+        0 AS viewNo,
+        q.QNA_TITLE AS title,
+        q.USER_ID AS userId,
+        u.USER_NAME AS writerName,
+        u.ROLE AS writerRole,
+        TO_CHAR(q.QNA_CREATED, 'YYYY-MM-DD') AS createdAt,
+        NVL(q.QNA_HIT, 0) AS hit
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+      WHERE q.IS_NOTICE = 'Y'
+        AND NVL(q.DEL_YN, 'N') = 'N'
+      ORDER BY q.QNA_CREATED DESC
+    )
+    WHERE ROWNUM <![CDATA[ <= ]]> #{value}
+  </select>
+
+  <!-- 2) (학원식) 전체 레코드 수: 공지 제외(QNA) + REVIEW (+검색) -->
+  <select id="getListCount" parameterType="pinfo" resultType="int">
+    SELECT COUNT(*)
+    FROM (
+      <!-- QNA(공지 제외) -->
+      SELECT q.QNA_NO AS postNo
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+      WHERE q.IS_NOTICE = 'N'
+        AND NVL(q.DEL_YN, 'N') = 'N'
+      <!-- 검색조건 -->
+      <if test="svo != null and svo.stype != null and svo.stype != '' and svo.sword != null and svo.sword != ''">
+        <choose>
+          <when test="svo.stype == 'title'">
+            AND q.QNA_TITLE LIKE '%' || #{svo.sword} || '%'
+          </when>
+          <when test="svo.stype == 'writer'">
+            AND (q.USER_ID LIKE '%' || #{svo.sword} || '%' OR u.USER_NAME LIKE '%' || #{svo.sword} || '%')
+          </when>
+          <when test="svo.stype == 'content'">
+            AND q.QNA_CTT LIKE '%' || #{svo.sword} || '%'
+          </when>
+        </choose>
+      </if>
+
+      UNION ALL
+
+      <!-- REVIEW -->
+      SELECT r.REVIEW_NO AS postNo
+      FROM REVIEW_BOARD r
+      JOIN USERS u ON u.USER_ID = r.USER_ID
+      WHERE NVL(r.DEL_YN, 'N') = 'N'
+      <!-- 검색조건 -->
+      <if test="svo != null and svo.stype != null and svo.stype != '' and svo.sword != null and svo.sword != ''">
+        <choose>
+          <when test="svo.stype == 'title'">
+            AND r.REVIEW_TITLE LIKE '%' || #{svo.sword} || '%'
+          </when>
+          <when test="svo.stype == 'writer'">
+            AND (r.USER_ID LIKE '%' || #{svo.sword} || '%' OR u.USER_NAME LIKE '%' || #{svo.sword} || '%')
+          </when>
+          <when test="svo.stype == 'content'">
+            AND r.REVIEW_CTT LIKE '%' || #{svo.sword} || '%'
+          </when>
+        </choose>
+      </if>
+    )
+  </select>
+
+  <!-- 3) (학원식) 페이징 리스트: pinfo의 #{start}, #{end} 사용 (+검색) -->
+  <select id="pageByList" parameterType="pinfo" resultType="bhvo">
+    SELECT postType, postNo, viewNo, title, userId, writerName, writerRole,
+           TO_CHAR(createdAt, 'YYYY-MM-DD') AS createdAt,
+           hit
+    FROM (
+      SELECT ROWNUM AS rnum, X.*
+      FROM (
+        SELECT postType, postNo, viewNo, title, userId, writerName, writerRole, createdAt, hit
+        FROM (
+          <!-- QNA(공지 제외) -->
+          SELECT
+            'QNA' AS postType,
+            q.QNA_NO AS postNo,
+            (COUNT(*) OVER ()
+              - ROW_NUMBER() OVER (ORDER BY q.QNA_CREATED DESC, q.QNA_NO DESC)
+              + 1) AS viewNo,
+            q.QNA_TITLE AS title,
+            q.USER_ID AS userId,
+            u.USER_NAME AS writerName,
+            u.ROLE AS writerRole,
+            q.QNA_CREATED AS createdAt,
+            NVL(q.QNA_HIT, 0) AS hit
+          FROM QNA_BOARD q
+          JOIN USERS u ON u.USER_ID = q.USER_ID
+          WHERE q.IS_NOTICE = 'N'
+            AND NVL(q.DEL_YN, 'N') = 'N'
+          <!-- ✅ (추가) QNA 검색조건 -->
+          <if test="svo != null and svo.stype != null and svo.stype != '' and svo.sword != null and svo.sword != ''">
+            <choose>
+              <when test="svo.stype == 'title'">
+                AND q.QNA_TITLE LIKE '%' || #{svo.sword} || '%'
+              </when>
+              <when test="svo.stype == 'writer'">
+                AND (q.USER_ID LIKE '%' || #{svo.sword} || '%' OR u.USER_NAME LIKE '%' || #{svo.sword} || '%')
+              </when>
+              <when test="svo.stype == 'content'">
+                AND q.QNA_CTT LIKE '%' || #{svo.sword} || '%'
+              </when>
+            </choose>
+          </if>
+
+          UNION ALL
+
+          <!-- REVIEW -->
+          SELECT
+            'REVIEW' AS postType,
+            r.REVIEW_NO AS postNo,
+            (COUNT(*) OVER ()
+              - ROW_NUMBER() OVER (ORDER BY r.REVIEW_CREATED DESC, r.REVIEW_NO DESC)
+              + 1) AS viewNo,
+            r.REVIEW_TITLE AS title,
+            r.USER_ID AS userId,
+            u.USER_NAME AS writerName,
+            u.ROLE AS writerRole,
+            r.REVIEW_CREATED AS createdAt,
+            NVL(r.REVIEW_HIT, 0) AS hit
+          FROM REVIEW_BOARD r
+          JOIN USERS u ON u.USER_ID = r.USER_ID
+          WHERE NVL(r.DEL_YN, 'N') = 'N'
+          <!-- ✅ (추가) REVIEW 검색조건 -->
+          <if test="svo != null and svo.stype != null and svo.stype != '' and svo.sword != null and svo.sword != ''">
+            <choose>
+              <when test="svo.stype == 'title'">
+                AND r.REVIEW_TITLE LIKE '%' || #{svo.sword} || '%'
+              </when>
+              <when test="svo.stype == 'writer'">
+                AND (r.USER_ID LIKE '%' || #{svo.sword} || '%' OR u.USER_NAME LIKE '%' || #{svo.sword} || '%')
+              </when>
+              <when test="svo.stype == 'content'">
+                AND r.REVIEW_CTT LIKE '%' || #{svo.sword} || '%'
+              </when>
+            </choose>
+          </if>
+        )
+        ORDER BY createdAt DESC, postNo DESC
+      ) X
+      WHERE ROWNUM <![CDATA[ <= ]]> #{end}
+    )
+    WHERE rnum <![CDATA[ >= ]]> #{start}
+  </select>
+
+</mapper>

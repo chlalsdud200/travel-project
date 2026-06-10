@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="wish">
+
+  <insert id="insertWishIfNotExists" parameterType="map">
+    INSERT INTO WISHLIST (USER_ID, REG_ID)
+    SELECT #{userId}, #{regId}
+    FROM dual
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM WISHLIST
+      WHERE USER_ID = #{userId}
+        AND REG_ID  = #{regId}
+    )
+  </insert>
+
+  <delete id="deleteWish" parameterType="map">
+    DELETE FROM WISHLIST
+     WHERE USER_ID = #{userId}
+       AND REG_ID  = #{regId}
+  </delete>
+
+  <select id="existsWish" parameterType="map" resultType="int">
+    SELECT COUNT(*)
+      FROM WISHLIST
+     WHERE USER_ID = #{userId}
+       AND REG_ID  = #{regId}
+  </select>
+
+  <!-- ✅ Map으로 받으려면 resultType="map" -->
+  <select id="selectWishList" parameterType="string" resultType="map">
+    SELECT r.REG_ID,
+           r.PACKAGE_ID,
+           r.REG_TITLE,
+           r.REG_PRICE,
+           r.START_DT,
+           r.END_DT,
+           r.HIGHLIGHT,
+           r.DESCRIPTION_A,
+           r.DESCRIPTION_B,
+           c.CTRY_NAME,
+           l.LOC_NAME,
+           i.IMG_PATH,
+           i.ORIGIN_NAME
+      FROM WISHLIST w
+      JOIN REGISTER_PROD r ON w.REG_ID = r.REG_ID
+      JOIN PACKAGES p ON r.PACKAGE_ID = p.PACKAGE_ID
+      JOIN LOCATION l ON l.LOC_ID = p.LOC_ID
+      JOIN COUNTRY c ON p.CTRY_ID = c.CTRY_ID
+      LEFT JOIN IMG_MAPPING m
+             ON m.REG_ID = r.REG_ID
+            AND m.VIEW_SEQUENCE = (
+              SELECT MIN(m2.VIEW_SEQUENCE)
+                FROM IMG_MAPPING m2
+               WHERE m2.REG_ID = r.REG_ID
+            )
+      LEFT JOIN IMG_STORAGE i
+             ON i.IMG_NO = m.IMG_NO
+     WHERE w.USER_ID = #{value}
+    ORDER BY w.WISH_DT DESC, r.REG_ID DESC
+  </select>
+  
+<select id="selectCartSummary" parameterType="string" resultType="map">
+  SELECT *
+  FROM (
+    SELECT
+     c.REG_ID AS REG_ID, 
+      COUNT(*) OVER() AS CNT,
+      r.REG_TITLE AS TITLE,
+      NVL(i.IMG_PATH, '/assets/images/location/reg_default.jpg') AS IMG_PATH,
+      TO_CHAR(r.START_DT, 'YYYY-MM-DD') AS START_YMD,
+      TO_CHAR(r.END_DT,   'YYYY-MM-DD') AS END_YMD,
+      r.REG_PRICE AS PRICE
+    FROM CART c
+    JOIN REGISTER_PROD r ON r.REG_ID = c.REG_ID
+    LEFT JOIN IMG_MAPPING m
+           ON m.REG_ID = r.REG_ID
+          AND m.VIEW_SEQUENCE = (
+            SELECT MIN(m2.VIEW_SEQUENCE)
+              FROM IMG_MAPPING m2
+             WHERE m2.REG_ID = r.REG_ID
+          )
+    LEFT JOIN IMG_STORAGE i
+           ON i.IMG_NO = m.IMG_NO
+    WHERE c.USER_ID = #{value}
+    ORDER BY c.REG_ID DESC
+  )
+  WHERE ROWNUM = 1
+</select>
+
+  
+
+</mapper>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="dashboard">
+
+  <!-- 최근 7일(오늘 포함) 신규 회원: email_verified 기준 -->
+  <select id="selectNewMembers7d" resultType="int">
+    SELECT COUNT(*)
+      FROM email_verified ev
+      JOIN users u
+        ON u.user_email = ev.email
+     WHERE ev.verified_at >= TRUNC(SYSDATE) - 6
+       AND NVL(UPPER(u.role), 'USER') != 'ADMIN'
+  </select>
+
+  <!-- ✅ 전체 회원 수(TOTAL): ADMIN 제외 -->
+  <select id="selectTotalMembers" resultType="int">
+    SELECT COUNT(*)
+      FROM users u
+     WHERE NVL(UPPER(u.role), 'USER') != 'ADMIN'
+  </select>
+
+  <!-- ✅ 비활성(INACTIVE): WITHDRAWN(탈퇴) 기준 -->
+  <select id="selectInactiveMembers" resultType="int">
+    SELECT COUNT(*)
+      FROM users u
+     WHERE NVL(UPPER(u.role), 'USER') = 'WITHDRAWN'
+  </select>
+
+ <!-- 오늘 매출: 오늘 '결제완료(PAID)'된 건만 합산 (환불된 결제는 제외) -->
+<select id="selectTodaySales" resultType="int">
+  SELECT NVL(SUM(p.PAY_AMOUNT), 0)
+    FROM PAYMENT p
+   WHERE p.PAY_STATUS = 'PAID'
+     AND TRUNC(p.PAID_AT) = TRUNC(SYSDATE)
+     AND NOT EXISTS (
+       SELECT 1
+         FROM REFUND r
+        WHERE r.PAY_NO = p.PAY_NO
+     )
+</select>
+
+
+  <!-- 결제 대기 주문 -->
+  <select id="selectPendingOrders" resultType="int">
+    SELECT COUNT(*)
+      FROM orders o
+      LEFT JOIN payment p
+        ON p.order_no = o.order_no
+     WHERE NVL(p.pay_status, 'PENDING') IN ('PENDING','READY')
+  </select>
+
+  <!-- 환불 대기 -->
+  <select id="selectPendingRefunds" resultType="int">
+    SELECT COUNT(*)
+      FROM refund r
+     WHERE NVL(r.refund_status, 'PENDING') IN ('PENDING','READY')
+  </select>
+
+	<!-- ✅ 오늘 신규회원(이메일 인증 완료 기준) -->
+<select id="selectNewMembersToday" resultType="int">
+  SELECT COUNT(*)
+    FROM email_verified ev
+    JOIN users u ON u.user_email = ev.email
+   WHERE TRUNC(ev.verified_at) = TRUNC(SYSDATE)
+     AND NVL(UPPER(u.role), 'USER') != 'ADMIN'
+</select>
+
+<!-- ✅ 어제 신규회원 -->
+<select id="selectNewMembersYesterday" resultType="int">
+  SELECT COUNT(*)
+    FROM email_verified ev
+    JOIN users u ON u.user_email = ev.email
+   WHERE TRUNC(ev.verified_at) = TRUNC(SYSDATE) - 1
+     AND NVL(UPPER(u.role), 'USER') != 'ADMIN'
+</select>
+	
+
+  <!-- =========================
+       대시보드 - 상품관리 요약
+       REGISTER_PROD 기준
+       - PRODUCTS : 전체 등록
+       - ON SALE  : FOR_SALE='Y'
+       - HIDDEN   : FOR_SALE='N'
+     ========================= -->
+
+  <select id="selectTotalProducts" resultType="int">
+    SELECT COUNT(*)
+      FROM REGISTER_PROD
+  </select>
+
+  <select id="selectOnSaleProducts" resultType="int">
+    SELECT COUNT(*)
+      FROM REGISTER_PROD
+     WHERE NVL(FOR_SALE, 'N') = 'Y'
+  </select>
+
+  <select id="selectHiddenProducts" resultType="int">
+    SELECT COUNT(*)
+      FROM REGISTER_PROD
+     WHERE NVL(FOR_SALE, 'N') != 'Y'
+  </select>
+
+
+  <!-- =========================
+       대시보드 - 결제관리 요약
+       - REFUND 는 refund 테이블 존재 여부로 판단(겹침 방지)
+     ========================= -->
+
+  <select id="selectPayPendingCount" resultType="int">
+    WITH base AS (
+      SELECT
+        o.ORDER_NO,
+        MAX(p.PAY_NO) AS PAY_NO,
+        COALESCE(MAX(p.PAY_STATUS), MAX(o.ORDER_STATUS), 'PENDING') AS PAY_STATUS
+      FROM ORDERS o
+      LEFT JOIN PAYMENT p ON p.ORDER_NO = o.ORDER_NO
+      GROUP BY o.ORDER_NO
+    )
+    SELECT COUNT(*)
+      FROM base b
+     WHERE NVL(b.PAY_STATUS, 'PENDING') IN ('PENDING','READY')
+  </select>
+
+  <select id="selectPayRefundCount" resultType="int">
+    WITH base AS (
+      SELECT
+        o.ORDER_NO,
+        MAX(p.PAY_NO) AS PAY_NO
+      FROM ORDERS o
+      LEFT JOIN PAYMENT p ON p.ORDER_NO = o.ORDER_NO
+      GROUP BY o.ORDER_NO
+    )
+    SELECT COUNT(*)
+      FROM base b
+     WHERE b.PAY_NO IS NOT NULL
+       AND EXISTS (
+         SELECT 1
+           FROM REFUND r
+          WHERE r.PAY_NO = b.PAY_NO
+       )
+  </select>
+
+  <select id="selectPayPaidCount" resultType="int">
+    WITH base AS (
+      SELECT
+        o.ORDER_NO,
+        MAX(p.PAY_NO) AS PAY_NO,
+        COALESCE(MAX(p.PAY_STATUS), MAX(o.ORDER_STATUS), 'PENDING') AS PAY_STATUS
+      FROM ORDERS o
+      LEFT JOIN PAYMENT p ON p.ORDER_NO = o.ORDER_NO
+      GROUP BY o.ORDER_NO
+    )
+    SELECT COUNT(*)
+      FROM base b
+     WHERE b.PAY_STATUS = 'PAID'
+       AND NOT (
+         b.PAY_NO IS NOT NULL
+         AND EXISTS (SELECT 1 FROM REFUND r WHERE r.PAY_NO = b.PAY_NO)
+       )
+  </select>
+  <!-- =========================
+       게시판관리(대시보드 요약)
+       - 문의글수(QNA_BOARD)
+       - 리뷰글수(REVIEW_BOARD)
+       - 미답변수(QNA_STATUS='WAIT')
+       ========================= -->
+
+  <select id="selectBoardQnaCount" resultType="int">
+    SELECT COUNT(*)
+    FROM QNA_BOARD
+    WHERE NVL(DEL_YN, 'N') = 'N'   <!-- 삭제된 글 제외(존재이유: 대시보드는 '현재 운영' 기준) -->
+  </select>
+
+  <select id="selectBoardReviewCount" resultType="int">
+    SELECT COUNT(*)
+    FROM REVIEW_BOARD
+    WHERE NVL(DEL_YN, 'N') = 'N'   <!-- 삭제된 글 제외(존재이유: 운영중인 리뷰 건수만 보여주기) -->
+  </select>
+
+  <select id="selectBoardUnansweredCount" resultType="int">
+    SELECT COUNT(*)
+    FROM QNA_BOARD
+    WHERE NVL(DEL_YN, 'N') = 'N'                 <!-- 삭제 제외 -->
+      AND NVL(QNA_STATUS, 'WAIT') = 'WAIT'       <!-- 답변대기만(존재이유: 관리자 처리 우선순위 지표) -->
+  </select>
+
+
+
+</mapper>

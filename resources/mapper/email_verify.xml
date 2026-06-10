@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="emailVerify">
+
+  <insert id="insertToken" parameterType="map">
+    INSERT INTO EMAIL_VERIFY_TOKEN (TOKEN, EMAIL, EXPIRES_AT, USED_YN, CREATED_AT)
+    VALUES (#{token}, #{email}, #{expiresAt}, 'N', SYSDATE)
+  </insert>
+
+ <select id="selectValidToken" parameterType="string" resultType="map">
+  SELECT
+    TOKEN AS "token",
+    EMAIL AS "email"
+  FROM EMAIL_VERIFY_TOKEN
+  WHERE TOKEN = #{value}
+    AND USED_YN = 'N'
+    AND EXPIRES_AT >= SYSDATE
+</select>
+
+
+  <update id="markTokenUsed" parameterType="string">
+    UPDATE EMAIL_VERIFY_TOKEN SET USED_YN='Y' WHERE TOKEN=#{value}
+  </update>
+
+<!-- resources/mapper/email_verify.xml -->
+
+<insert id="mergeVerifiedEmail" parameterType="map">
+  MERGE INTO EMAIL_VERIFIED v
+  USING (
+    SELECT
+      #{email, jdbcType=VARCHAR} AS EMAIL,
+      #{token, jdbcType=VARCHAR} AS TOKEN
+    FROM dual
+  ) s
+  ON (v.EMAIL = s.EMAIL)
+  WHEN MATCHED THEN
+    UPDATE SET
+      v.VERIFIED_AT = SYSDATE,
+      v.TOKEN = s.TOKEN
+  WHEN NOT MATCHED THEN
+    INSERT (EMAIL, TOKEN, VERIFIED_AT)
+    VALUES (s.EMAIL, s.TOKEN, SYSDATE)
+</insert>
+
+
+
+  <select id="isEmailVerified" parameterType="string" resultType="int">
+    SELECT COUNT(*) FROM EMAIL_VERIFIED WHERE EMAIL = #{value}
+  </select>
+
+</mapper>

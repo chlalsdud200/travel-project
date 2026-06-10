@@ -1,0 +1,614 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="salesMonthly">
+
+  <!-- 공통 SQL 조각 - 날짜 옵션화 -->
+  <sql id="grp_key_paid">
+    <choose>
+      <when test="unit == 'DAY'">TRUNC(p.PAID_AT)</when>
+      <otherwise>TRUNC(p.PAID_AT, 'MM')</otherwise>
+    </choose>
+  </sql>
+
+  <sql id="grp_key_cancel">
+    <choose>
+      <when test="unit == 'DAY'">TRUNC(p.REQUEST_AT)</when>
+      <otherwise>TRUNC(p.REQUEST_AT, 'MM')</otherwise>
+    </choose>
+  </sql>
+
+  <sql id="grp_key_refund_req">
+    <choose>
+      <when test="unit == 'DAY'">TRUNC(r.REFUND_DATE)</when>
+      <otherwise>TRUNC(r.REFUND_DATE, 'MM')</otherwise>
+    </choose>
+  </sql>
+
+  <sql id="label_fmt">
+    <choose>
+      <when test="unit == 'DAY'">'YYYY-MM-DD'</when>
+      <otherwise>'YYYY-MM'</otherwise>
+    </choose>
+  </sql>
+
+  <!-- ✅ 날짜 필터 옵션화 -->
+  <sql id="range_paid_at">
+    <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+    AND p.PAID_AT &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+    AND p.PAID_AT &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+    </if>
+  </sql>
+
+  <sql id="range_request_at">
+    <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+    AND p.REQUEST_AT &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+    AND p.REQUEST_AT &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+    </if>
+  </sql>
+
+  <sql id="range_refund_date">
+    <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+    AND r.REFUND_DATE &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+    AND r.REFUND_DATE &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+    </if>
+  </sql>
+
+  <!-- ResultMap -->
+  <resultMap id="rmSalesPoint" type="kr.or.ddit.tct.admin.stats.vo.SalesPointVO">
+    <result property="period" column="period"/>
+    <result property="paidAmt" column="paidAmt"/>
+    <result property="refundReqAmt" column="refundReqAmt"/>
+    <result property="cancelAmt" column="cancelAmt"/>
+    <result property="paidCnt" column="paidCnt"/>
+    <result property="refundReqCnt" column="refundReqCnt"/>
+    <result property="cancelCnt" column="cancelCnt"/>
+  </resultMap>
+
+  <resultMap id="rmSalesKpi" type="kr.or.ddit.tct.admin.stats.vo.SalesKpiVO">
+    <result property="thisPaidAmt" column="thisPaidAmt"/>
+    <result property="prevPaidAmt" column="prevPaidAmt"/>
+    <result property="thisRefundReqAmt" column="thisRefundReqAmt"/>
+    <result property="thisPaidCnt" column="thisPaidCnt"/>
+  </resultMap>
+
+  <!-- 타임라인 -->
+  <select id="selectSalesTimeline" parameterType="map" resultMap="rmSalesPoint">
+    SELECT
+      TO_CHAR(COALESCE(a.k, b.k, c.k), <include refid="label_fmt"/>) AS period,
+      NVL(a.paidAmt, 0) AS paidAmt,
+      NVL(b.refundReqAmt, 0) AS refundReqAmt,
+      NVL(c.cancelAmt, 0) AS cancelAmt,
+      NVL(a.paidCnt, 0) AS paidCnt,
+      NVL(b.refundReqCnt, 0) AS refundReqCnt,
+      NVL(c.cancelCnt, 0) AS cancelCnt
+    FROM (
+      SELECT
+        <include refid="grp_key_paid"/> AS k,
+        SUM(p.PAY_AMOUNT) AS paidAmt,
+        COUNT(*) AS paidCnt
+      FROM PAYMENT p
+      WHERE p.PAY_STATUS = 'PAID'
+        AND p.PAID_AT IS NOT NULL
+        <include refid="range_paid_at"/>
+        <if test="year != null and year != ''">
+          AND TO_CHAR(p.PAID_AT, 'YYYY') = #{year}
+        </if>
+      GROUP BY <include refid="grp_key_paid"/>
+    ) a
+    FULL OUTER JOIN (
+      SELECT
+        <include refid="grp_key_refund_req"/> AS k,
+        SUM(r.REFUND_AMOUNT) AS refundReqAmt,
+        COUNT(*) AS refundReqCnt
+      FROM REFUND r
+      WHERE r.REFUND_STATUS = 'REQUESTED'
+        AND r.REFUND_DATE IS NOT NULL
+        <include refid="range_refund_date"/>
+        <if test="year != null and year != ''">
+          AND TO_CHAR(r.REFUND_DATE, 'YYYY') = #{year}
+        </if>
+      GROUP BY <include refid="grp_key_refund_req"/>
+    ) b
+      ON b.k = a.k
+    FULL OUTER JOIN (
+      SELECT
+        <include refid="grp_key_cancel"/> AS k,
+        SUM(p.PAY_AMOUNT) AS cancelAmt,
+        COUNT(*) AS cancelCnt
+      FROM PAYMENT p
+      WHERE p.PAY_STATUS = 'CANCELED'
+        AND p.REQUEST_AT IS NOT NULL
+        <include refid="range_request_at"/>
+        <if test="year != null and year != ''">
+          AND TO_CHAR(p.REQUEST_AT, 'YYYY') = #{year}
+        </if>
+      GROUP BY <include refid="grp_key_cancel"/>
+    ) c
+      ON c.k = COALESCE(a.k, b.k)
+    ORDER BY COALESCE(a.k, b.k, c.k)
+  </select>
+
+  <!-- KPI -->
+  <select id="selectSalesKpi" parameterType="map" resultMap="rmSalesKpi">
+    SELECT
+      NVL((
+        SELECT SUM(p.PAY_AMOUNT)
+        FROM PAYMENT p
+        WHERE p.PAY_STATUS = 'PAID'
+          AND p.PAID_AT IS NOT NULL
+          <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+          <![CDATA[
+          AND p.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+          AND p.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+          ]]>
+          </if>
+      ), 0) AS thisPaidAmt,
+
+      0 AS prevPaidAmt,
+
+      NVL((
+        SELECT SUM(r.REFUND_AMOUNT)
+        FROM REFUND r
+        WHERE r.REFUND_STATUS = 'REQUESTED'
+          AND r.REFUND_DATE IS NOT NULL
+          <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+          <![CDATA[
+          AND r.REFUND_DATE >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+          AND r.REFUND_DATE <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+          ]]>
+          </if>
+      ), 0) AS thisRefundReqAmt,
+
+      NVL((
+        SELECT COUNT(DISTINCT p2.ORDER_NO)
+        FROM PAYMENT p2
+        WHERE p2.PAY_STATUS = 'PAID'
+          AND p2.PAID_AT IS NOT NULL
+          <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+          <![CDATA[
+          AND p2.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+          AND p2.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+          ]]>
+          </if>
+      ), 0) AS thisPaidCnt
+    FROM DUAL
+  </select>
+
+  <!-- 패키지별 판매 리스트 -->
+  <resultMap id="rmPackageSalesRow" type="kr.or.ddit.tct.admin.stats.vo.PackageSalesRowVO">
+    <result property="packageTitle" column="packageTitle"/>
+    <result property="regTitle"     column="regTitle"/>
+    <result property="startDt"      column="startDt"/>
+    <result property="regPrice"     column="regPrice"/>
+    <result property="salesQty"     column="salesQty"/>
+    <result property="orderCnt"     column="orderCnt"/>
+    <result property="soldAmt"      column="soldAmt"/>
+    <result property="regId"        column="regId"/>
+  </resultMap>
+
+  <select id="selectPackageSalesList" parameterType="map" resultMap="rmPackageSalesRow">
+    SELECT packageTitle, regTitle, startDt, regPrice, salesQty, orderCnt, soldAmt, regId
+    FROM (
+      SELECT
+        t.packageTitle,
+        t.regTitle,
+        t.startDt,
+        t.regPrice,
+        t.salesQty,
+        t.orderCnt,
+        t.soldAmt,
+        t.regId,
+        ROW_NUMBER() OVER (
+          ORDER BY
+          <choose>
+            <when test="sort == 'SALES_DESC'">
+              t.soldAmt DESC, t.startDtDate DESC, t.regId DESC
+            </when>
+            <when test="sort == 'SALES_ASC'">
+              t.soldAmt ASC, t.startDtDate DESC, t.regId DESC
+            </when>
+            <otherwise>
+              t.startDtDate DESC, t.regId DESC
+            </otherwise>
+          </choose>
+        ) AS rn
+      FROM (
+        SELECT
+          pkg.PACKAGE_TITLE                          AS packageTitle,
+          rp.REG_TITLE                               AS regTitle,
+          rp.START_DT                                AS startDtDate,
+          TO_CHAR(rp.START_DT, 'YYYY-MM-DD')         AS startDt,
+          rp.REG_PRICE                               AS regPrice,
+          NVL(SUM(oi.ORDER_QTY), 0)                  AS salesQty,
+          COUNT(DISTINCT o.ORDER_NO)                 AS orderCnt,
+          NVL(SUM(oi.ITEM_TOTAL), 0)                 AS soldAmt,
+          rp.REG_ID                                  AS regId
+        FROM REGISTER_PROD rp
+        JOIN PACKAGES pkg 
+          ON pkg.PACKAGE_ID = rp.PACKAGE_ID
+        JOIN ORDER_ITEM oi 
+          ON oi.REG_ID = rp.REG_ID
+        JOIN ORDERS o 
+          ON o.ORDER_NO = oi.ORDER_NO
+        JOIN (
+          SELECT ORDER_NO, MAX(PAID_AT) AS PAID_AT
+          FROM PAYMENT
+          WHERE PAY_STATUS = 'PAID'
+            AND PAID_AT IS NOT NULL
+          GROUP BY ORDER_NO
+        ) pay 
+          ON pay.ORDER_NO = o.ORDER_NO
+        WHERE pkg.PACKAGE_TITLE LIKE '%' || #{packageTitle} || '%'
+          <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+          <![CDATA[
+          AND pay.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+          AND pay.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+          ]]>
+          </if>
+        GROUP BY 
+          pkg.PACKAGE_TITLE, 
+          rp.REG_TITLE,
+          rp.START_DT, 
+          rp.REG_PRICE, 
+          rp.REG_ID
+      ) t
+    ) 
+    WHERE rn BETWEEN ((#{page} - 1) * #{size} + 1) AND (#{page} * #{size})
+  </select>
+
+  <select id="selectPackageSalesCount" parameterType="map" resultType="int">
+    SELECT COUNT(*)
+    FROM (
+      SELECT DISTINCT rp.REG_ID
+      FROM REGISTER_PROD rp
+      JOIN PACKAGES pkg 
+        ON pkg.PACKAGE_ID = rp.PACKAGE_ID
+      JOIN ORDER_ITEM oi 
+        ON oi.REG_ID = rp.REG_ID
+      JOIN ORDERS o 
+        ON o.ORDER_NO = oi.ORDER_NO
+      JOIN (
+        SELECT ORDER_NO, MAX(PAID_AT) AS PAID_AT
+        FROM PAYMENT
+        WHERE PAY_STATUS = 'PAID'
+          AND PAID_AT IS NOT NULL
+        GROUP BY ORDER_NO
+      ) pay 
+        ON pay.ORDER_NO = o.ORDER_NO
+      WHERE pkg.PACKAGE_TITLE LIKE '%' || #{packageTitle} || '%'
+        <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+        <![CDATA[
+        AND pay.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+        AND pay.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+        ]]>
+        </if>
+    )
+  </select>
+
+  <!-- ✅ 패키지 자동완성 (날짜 필터 없음 - 원본 유지) -->
+  <resultMap id="rmPackageAutocomplete" type="kr.or.ddit.tct.admin.stats.vo.PackageAutocompleteVO">
+    <result property="packageId" column="packageId"/>
+    <result property="packageTitle" column="packageTitle"/>
+  </resultMap>
+
+  <select id="selectPackageAutocomplete" parameterType="map" resultMap="rmPackageAutocomplete">
+    SELECT DISTINCT
+      pkg.PACKAGE_ID AS packageId,
+      pkg.PACKAGE_TITLE AS packageTitle
+    FROM PACKAGES pkg
+    WHERE 1=1
+      <if test="keyword != null and keyword != ''">
+        AND pkg.PACKAGE_TITLE LIKE '%' || #{keyword} || '%'
+      </if>
+    ORDER BY pkg.PACKAGE_ID DESC
+    FETCH FIRST 20 ROWS ONLY
+  </select>
+
+  <!-- ✅ 등록행 목록 조회 (날짜 조건 옵션화) -->
+  <resultMap id="rmPackageRegItem" type="kr.or.ddit.tct.admin.stats.vo.PackageRegItemVO">
+    <result property="regId" column="regId"/>
+    <result property="regTitle" column="regTitle"/>
+    <result property="startDt" column="startDt"/>
+    <result property="soldAmt" column="soldAmt"/>
+    <result property="orderCnt" column="orderCnt"/>
+  </resultMap>
+
+  <select id="selectPackageRegList" parameterType="map" resultMap="rmPackageRegItem">
+    SELECT
+      rp.REG_ID AS regId,
+      rp.REG_TITLE AS regTitle,
+      TO_CHAR(rp.START_DT, 'YYYY-MM-DD') AS startDt,
+      NVL(SUM(oi.ITEM_TOTAL), 0) AS soldAmt,
+      COUNT(DISTINCT o.ORDER_NO) AS orderCnt
+    FROM REGISTER_PROD rp
+    LEFT JOIN ORDER_ITEM oi 
+      ON oi.REG_ID = rp.REG_ID
+    LEFT JOIN ORDERS o 
+      ON o.ORDER_NO = oi.ORDER_NO
+    LEFT JOIN (
+      SELECT ORDER_NO, MAX(PAID_AT) AS PAID_AT
+      FROM PAYMENT
+      WHERE PAY_STATUS = 'PAID'
+        AND PAID_AT IS NOT NULL
+      GROUP BY ORDER_NO
+    ) pay 
+      ON pay.ORDER_NO = o.ORDER_NO
+    WHERE rp.PACKAGE_ID = #{packageId}
+      <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+        <![CDATA[
+        AND (pay.PAID_AT IS NULL OR (
+          pay.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+          AND pay.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+        ))
+        ]]>
+      </if>
+    GROUP BY rp.REG_ID, rp.REG_TITLE, rp.START_DT
+    ORDER BY
+      <choose>
+        <when test="sort == 'SALES_DESC'">
+          soldAmt DESC, rp.START_DT DESC
+        </when>
+        <when test="sort == 'SALES_ASC'">
+          soldAmt ASC, rp.START_DT DESC
+        </when>
+        <otherwise>
+          rp.START_DT DESC
+        </otherwise>
+      </choose>
+  </select>
+
+  <!-- 등록행 비교 -->
+  <resultMap id="rmRegCompareRow" type="kr.or.ddit.tct.admin.stats.vo.RegCompareRowVO">
+    <result property="period" column="period"/>
+    <result property="seriesKey" column="seriesKey"/>
+    <result property="seriesLabel" column="seriesLabel"/>
+    <result property="soldAmt" column="soldAmt"/>
+    <result property="orderCnt" column="orderCnt"/>
+  </resultMap>
+
+  <select id="selectPackageRegCompare" parameterType="map" resultMap="rmRegCompareRow">
+    SELECT period, seriesKey, seriesLabel, soldAmt, orderCnt
+    FROM (
+      SELECT
+        <choose>
+          <when test="unit == 'DAY'">TO_CHAR(pay.PAID_AT, 'YYYY-MM-DD')</when>
+          <when test="unit == 'WEEK'">
+            TO_CHAR(TRUNC(pay.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+            TO_CHAR(TRUNC(pay.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+          </when>
+          <otherwise>TO_CHAR(pay.PAID_AT, 'YYYY-MM')</otherwise>
+        </choose> AS period,
+        rp.REG_ID AS seriesKey,
+        rp.REG_TITLE AS seriesLabel,
+        NVL(SUM(oi.ITEM_TOTAL), 0) AS soldAmt,
+        COUNT(DISTINCT o.ORDER_NO) AS orderCnt
+      FROM REGISTER_PROD rp
+      JOIN ORDER_ITEM oi ON oi.REG_ID = rp.REG_ID
+      JOIN ORDERS o ON o.ORDER_NO = oi.ORDER_NO
+      JOIN (
+        SELECT ORDER_NO, MAX(PAID_AT) AS PAID_AT
+        FROM PAYMENT
+        WHERE PAY_STATUS = 'PAID'
+          AND PAID_AT IS NOT NULL
+        GROUP BY ORDER_NO
+      ) pay ON pay.ORDER_NO = o.ORDER_NO
+      WHERE rp.PACKAGE_ID = #{packageId}
+        <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+        <![CDATA[
+        AND pay.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+        AND pay.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+        ]]>
+        </if>
+        AND rp.REG_ID IN
+        <foreach collection="regIds" item="rid" open="(" separator="," close=")">
+          #{rid}
+        </foreach>
+      GROUP BY
+        <choose>
+          <when test="unit == 'DAY'">TO_CHAR(pay.PAID_AT, 'YYYY-MM-DD')</when>
+          <when test="unit == 'WEEK'">
+            TO_CHAR(TRUNC(pay.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+            TO_CHAR(TRUNC(pay.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+          </when>
+          <otherwise>TO_CHAR(pay.PAID_AT, 'YYYY-MM')</otherwise>
+        </choose>,
+        rp.REG_ID, rp.REG_TITLE
+
+      UNION ALL
+
+      SELECT
+        <choose>
+          <when test="unit == 'DAY'">TO_CHAR(pay2.PAID_AT, 'YYYY-MM-DD')</when>
+          <when test="unit == 'WEEK'">
+            TO_CHAR(TRUNC(pay2.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+            TO_CHAR(TRUNC(pay2.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+          </when>
+          <otherwise>TO_CHAR(pay2.PAID_AT, 'YYYY-MM')</otherwise>
+        </choose> AS period,
+        'TOTAL' AS seriesKey,
+        '패키지 총매출' AS seriesLabel,
+        NVL(SUM(oi2.ITEM_TOTAL), 0) AS soldAmt,
+        COUNT(DISTINCT o2.ORDER_NO) AS orderCnt
+      FROM REGISTER_PROD rp2
+      JOIN ORDER_ITEM oi2 ON oi2.REG_ID = rp2.REG_ID
+      JOIN ORDERS o2 ON o2.ORDER_NO = oi2.ORDER_NO
+      JOIN (
+        SELECT ORDER_NO, MAX(PAID_AT) AS PAID_AT
+        FROM PAYMENT
+        WHERE PAY_STATUS = 'PAID'
+          AND PAID_AT IS NOT NULL
+        GROUP BY ORDER_NO
+      ) pay2 ON pay2.ORDER_NO = o2.ORDER_NO
+      WHERE rp2.PACKAGE_ID = #{packageId}
+        <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+        <![CDATA[
+        AND pay2.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+        AND pay2.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+        ]]>
+        </if>
+      GROUP BY
+        <choose>
+          <when test="unit == 'DAY'">TO_CHAR(pay2.PAID_AT, 'YYYY-MM-DD')</when>
+          <when test="unit == 'WEEK'">
+            TO_CHAR(TRUNC(pay2.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+            TO_CHAR(TRUNC(pay2.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+          </when>
+          <otherwise>TO_CHAR(pay2.PAID_AT, 'YYYY-MM')</otherwise>
+        </choose>
+    )
+    ORDER BY period, seriesKey
+  </select>
+
+  <!-- 패키지 비교 분석 -->
+  <resultMap id="rmPackageComparison" type="kr.or.ddit.tct.admin.stats.vo.PackageComparisonVO">
+    <result property="period" column="period"/>
+    <result property="seriesKey" column="seriesKey"/>
+    <result property="seriesLabel" column="seriesLabel"/>
+    <result property="soldAmt" column="soldAmt"/>
+    <result property="orderCnt" column="orderCnt"/>
+  </resultMap>
+
+  <select id="selectPackageComparison" parameterType="map" resultMap="rmPackageComparison">
+    SELECT
+      <choose>
+        <when test="unit == 'DAY'">TO_CHAR(rp.START_DT, 'YYYY-MM-DD')</when>
+        <when test="unit == 'WEEK'">
+          TO_CHAR(TRUNC(rp.START_DT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+          TO_CHAR(TRUNC(rp.START_DT, 'IW') + 6, 'YYYY-MM-DD')
+        </when>
+        <otherwise>TO_CHAR(rp.START_DT, 'YYYY-MM')</otherwise>
+      </choose> AS period,
+      pkg.PACKAGE_ID AS seriesKey,
+      pkg.PACKAGE_TITLE AS seriesLabel,
+      NVL(SUM(CASE WHEN pay.ORDER_NO IS NOT NULL THEN oi.ITEM_TOTAL ELSE 0 END), 0) AS soldAmt,
+      COUNT(DISTINCT CASE WHEN pay.ORDER_NO IS NOT NULL THEN o.ORDER_NO END) AS orderCnt
+    FROM REGISTER_PROD rp
+    JOIN PACKAGES pkg
+      ON pkg.PACKAGE_ID = rp.PACKAGE_ID
+    LEFT JOIN ORDER_ITEM oi
+      ON oi.REG_ID = rp.REG_ID
+    LEFT JOIN ORDERS o
+      ON o.ORDER_NO = oi.ORDER_NO
+    LEFT JOIN (
+      SELECT DISTINCT ORDER_NO
+      FROM PAYMENT
+      WHERE PAY_STATUS = 'PAID'
+        AND PAID_AT IS NOT NULL
+    ) pay
+      ON pay.ORDER_NO = o.ORDER_NO
+    WHERE pkg.PACKAGE_TITLE IN
+      <foreach collection="packageTitles" item="title" open="(" separator="," close=")">
+        #{title}
+      </foreach>
+      <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+      AND rp.START_DT &gt;= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+      AND rp.START_DT &lt;  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+      </if>
+    GROUP BY
+      <choose>
+        <when test="unit == 'DAY'">TO_CHAR(rp.START_DT, 'YYYY-MM-DD')</when>
+        <when test="unit == 'WEEK'">
+          TO_CHAR(TRUNC(rp.START_DT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+          TO_CHAR(TRUNC(rp.START_DT, 'IW') + 6, 'YYYY-MM-DD')
+        </when>
+        <otherwise>TO_CHAR(rp.START_DT, 'YYYY-MM')</otherwise>
+      </choose>,
+      pkg.PACKAGE_ID, pkg.PACKAGE_TITLE
+    ORDER BY period, pkg.PACKAGE_ID
+  </select>
+
+  <select id="selectPackageComparisonByIds" parameterType="map" resultMap="rmPackageComparison">
+    SELECT
+      <choose>
+        <when test="unit == 'DAY'">TO_CHAR(pay.PAID_AT, 'YYYY-MM-DD')</when>
+        <when test="unit == 'WEEK'">
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+        </when>
+        <otherwise>TO_CHAR(pay.PAID_AT, 'YYYY-MM')</otherwise>
+      </choose> AS period,
+      pkg.PACKAGE_ID AS seriesKey,
+      pkg.PACKAGE_TITLE AS seriesLabel,
+      NVL(SUM(oi.ITEM_TOTAL), 0) AS soldAmt,
+      COUNT(DISTINCT o.ORDER_NO) AS orderCnt
+    FROM PACKAGES pkg
+    JOIN REGISTER_PROD rp ON rp.PACKAGE_ID = pkg.PACKAGE_ID
+    JOIN ORDER_ITEM oi ON oi.REG_ID = rp.REG_ID
+    JOIN ORDERS o ON o.ORDER_NO = oi.ORDER_NO
+    JOIN (
+      SELECT ORDER_NO, MAX(PAID_AT) AS PAID_AT
+      FROM PAYMENT
+      WHERE PAY_STATUS = 'PAID'
+        AND PAID_AT IS NOT NULL
+      GROUP BY ORDER_NO
+    ) pay ON pay.ORDER_NO = o.ORDER_NO
+    WHERE pkg.PACKAGE_ID IN
+      <foreach collection="packageIds" item="id" open="(" separator="," close=")">
+        #{id}
+      </foreach>
+      <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+      <![CDATA[
+      AND pay.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+      AND pay.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+      ]]>
+      </if>
+    GROUP BY
+      <choose>
+        <when test="unit == 'DAY'">TO_CHAR(pay.PAID_AT, 'YYYY-MM-DD')</when>
+        <when test="unit == 'WEEK'">
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+        </when>
+        <otherwise>TO_CHAR(pay.PAID_AT, 'YYYY-MM')</otherwise>
+      </choose>,
+      pkg.PACKAGE_ID, pkg.PACKAGE_TITLE
+    ORDER BY period, pkg.PACKAGE_ID
+  </select>
+
+  <select id="selectTotalSalesByPeriod" parameterType="map" resultMap="rmPackageComparison">
+    SELECT
+      <choose>
+        <when test="unit == 'DAY'">TO_CHAR(pay.PAID_AT, 'YYYY-MM-DD')</when>
+        <when test="unit == 'WEEK'">
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+        </when>
+        <otherwise>TO_CHAR(pay.PAID_AT, 'YYYY-MM')</otherwise>
+      </choose> AS period,
+      'TOTAL' AS seriesKey,
+      '전체 총매출' AS seriesLabel,
+      NVL(SUM(oi.ITEM_TOTAL), 0) AS soldAmt,
+      COUNT(DISTINCT o.ORDER_NO) AS orderCnt
+    FROM REGISTER_PROD rp
+    JOIN ORDER_ITEM oi ON oi.REG_ID = rp.REG_ID
+    JOIN ORDERS o ON o.ORDER_NO = oi.ORDER_NO
+    JOIN (
+      SELECT ORDER_NO, MAX(PAID_AT) AS PAID_AT
+      FROM PAYMENT
+      WHERE PAY_STATUS = 'PAID'
+        AND PAID_AT IS NOT NULL
+      GROUP BY ORDER_NO
+    ) pay ON pay.ORDER_NO = o.ORDER_NO
+    WHERE 1=1
+      <if test="startDate != null and startDate != '' and endDate != null and endDate != ''">
+      <![CDATA[
+      AND pay.PAID_AT >= TO_DATE(#{startDate}, 'YYYY-MM-DD')
+      AND pay.PAID_AT <  TO_DATE(#{endDate}, 'YYYY-MM-DD') + 1
+      ]]>
+      </if>
+    GROUP BY
+      <choose>
+        <when test="unit == 'DAY'">TO_CHAR(pay.PAID_AT, 'YYYY-MM-DD')</when>
+        <when test="unit == 'WEEK'">
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW'), 'YYYY-MM-DD') || ' ~ ' ||
+          TO_CHAR(TRUNC(pay.PAID_AT, 'IW') + 6, 'YYYY-MM-DD')
+        </when>
+        <otherwise>TO_CHAR(pay.PAID_AT, 'YYYY-MM')</otherwise>
+      </choose>
+    ORDER BY period
+  </select>
+
+</mapper>

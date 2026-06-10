@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="adPackageMapper">
+
+	<!-- ========================= 1) create 탭 로딩용 - 지역 목록: LOCATION - LocVO: 
+		kr.or.ddit.tct.comm.vo.LocVO ========================== -->
+	<select id="selectLocationList"
+		resultType="kr.or.ddit.tct.comm.vo.LocVO">
+		SELECT
+		loc_id AS locId,
+		ctry_id AS ctryId,
+		loc_name AS locName
+		FROM location
+		ORDER BY loc_name
+	</select>
+
+	<!-- ========================= 2) create 탭 로딩용 - 메인 테마 목록: P_THEME (PThemeVO 
+		경로는 기존 그대로 사용, 너 프로젝트에 맞게 조정 가능) ========================== -->
+	<select id="selectPThemeList"
+		resultType="kr.or.ddit.tct.product.pTheme.vo.PThemeVO">
+		SELECT
+		theme_id AS themeId,
+		theme_title AS themeTitle
+		FROM
+		p_theme
+		ORDER BY theme_title
+	</select>
+
+	<!-- ========================= 3) 지역 선택 시 국가 자동 지정 - CountryVO: kr.or.ddit.tct.comm.vo.CountryVO 
+		- 파라미터: locId ========================== -->
+	<select id="selectCountryByLoc" parameterType="map"
+		resultType="kr.or.ddit.tct.comm.vo.CountryVO">
+		SELECT
+		c.ctry_id AS ctryId,
+		c.ctry_name AS ctryName,
+		c.region_name AS regionName
+		FROM location l
+		JOIN country c
+		ON c.ctry_id =
+		l.ctry_id
+		WHERE l.loc_id = #{locId}
+	</select>
+
+	<!-- ========================= 4) 지역 기반 호텔 목록: HOTELS by LOC_ID (HotelsVO 
+		경로는 네 프로젝트 VO에 맞게 유지/수정) ========================== -->
+	<select id="selectHotelsByLoc" parameterType="string"
+		resultType="kr.or.ddit.tct.product.hotels.vo.HotelsVO">
+		SELECT
+		hotel_id AS hotelId,
+		hotel_name AS hotelName,
+		hotel_code AS hotelCode,
+		loc_id AS locId,
+		hotel_tel AS hotelTel
+		FROM
+		hotels
+		WHERE loc_id = #{value}
+		ORDER BY hotel_name
+	</select>
+
+	<!-- ========================= 5) 패키지ID 생성용 - prefix(CTRY+LOC+THEME) 기준 
+		- NN(01~99) 중 비어있는 최소값 - 파라미터: prefix ========================== -->
+	<select id="selectNextPackageNo" parameterType="map"
+		resultType="string">
+		WITH used AS (
+		SELECT TO_NUMBER(SUBSTR(package_id,
+		LENGTH(#{prefix}) + 1, 2)) AS n
+		FROM packages
+		WHERE package_id LIKE
+		#{prefix} || '__'
+		),
+		nums AS (
+		SELECT LEVEL AS n
+		FROM dual
+		CONNECT BY LEVEL
+		&lt;= 99
+		)
+		SELECT LPAD(MIN(nums.n), 2, '0') AS next_no
+		FROM nums
+		LEFT JOIN
+		used ON used.n = nums.n
+		WHERE used.n IS NULL
+	</select>
+
+	<!-- ========================= 6) PACKAGES INSERT - package_id 컬럼은 VO에서 
+		pkgId 사용한다는 기준 반영 - parameterType은 Map으로 받아도 되고, PackagesVO로 받아도 됨 ========================== -->
+	<insert id="insertPackage" parameterType="map">
+		INSERT INTO packages
+		(package_id, package_title, ctry_id, theme_id, loc_id)
+		VALUES
+		(#{pkgId}, #{packageTitle}, #{ctryId}, #{themeId}, #{locId})
+	</insert>
+
+	<!-- 패키지 아이템 인서트 단건 -->
+	<insert id="insertPackageItem" parameterType="map">
+		INSERT INTO package_item
+		(pitem_no, package_id, item_id, hotel_id,
+		by_date)
+		VALUES
+		(
+		SEQ_P_ITEM_NO.NEXTVAL,
+		#{pkgId},
+		#{itemId},
+		<choose>
+			<when test="hotelId != null and hotelId != ''">#{hotelId}</when>
+			<otherwise>NULL</otherwise>
+		</choose>
+		,
+		#{byDate}
+		)
+	</insert>
+
+	<!-- ========================= 7) 아이템 검색 목록 (ITEM) - keyword(옵션): item_title 
+		/ item_id 부분검색 - limit: 최대 N개 resultType: kr.or.ddit.tct.product.item.vo.ItemVO 
+		========================== -->
+	<select id="selectItemList" parameterType="map"
+		resultType="kr.or.ddit.tct.product.item.vo.ItemVO">
+		SELECT *
+		FROM (
+		SELECT
+		i.item_id AS itemId,
+		i.item_title AS itemTitle,
+		i.loc_id AS locId,
+		l.loc_name AS locName,
+
+		CASE
+		WHEN #{keyword} IS NULL OR
+		TRIM(#{keyword}) IS NULL THEN 9
+		WHEN INSTR(LOWER(i.item_title),
+		LOWER(#{keyword})) > 0 THEN 1
+		WHEN INSTR(LOWER(l.loc_name),
+		LOWER(#{keyword})) > 0 THEN 2
+		WHEN INSTR(LOWER(i.item_id),
+		LOWER(#{keyword})) > 0 THEN 3
+		ELSE 9
+		END AS ord
+
+		FROM item i
+		LEFT JOIN
+		location l ON l.loc_id = i.loc_id
+
+		<where>
+			<if test="keyword != null and keyword != ''">
+				AND (
+				LOWER(i.item_title) LIKE '%' || LOWER(#{keyword}) ||
+				'%'
+				OR LOWER(i.item_id) LIKE '%' || LOWER(#{keyword}) || '%'
+				OR
+				LOWER(l.loc_name) LIKE '%' || LOWER(#{keyword}) || '%'
+				)
+			</if>
+		</where>
+
+		ORDER BY ord ASC, l.loc_name ASC, i.item_title ASC
+		)
+		WHERE ROWNUM &lt;=
+		#{limit}
+
+	</select>
+
+	<!-- ========================================= 호텔 검색 (keyword: 호텔명/코드/ID/지역명) 
+		return: hotelId, hotelName, hotelCode, locId, locName ========================================= -->
+	<select id="adSearchHotels" parameterType="map" resultType="map">
+		SELECT *
+		FROM (
+		SELECT
+		h.hotel_id AS "hotelId",
+		h.hotel_name AS
+		"hotelName",
+		h.hotel_code AS "hotelCode",
+		h.loc_id AS "locId",
+		l.loc_name AS "locName",
+
+		CASE
+		WHEN #{keyword} IS NULL OR
+		TRIM(#{keyword}) IS NULL THEN 9
+		WHEN INSTR(LOWER(h.hotel_name),
+		LOWER(#{keyword})) > 0 THEN 1
+		WHEN INSTR(LOWER(l.loc_name),
+		LOWER(#{keyword})) > 0 THEN 2
+		WHEN INSTR(LOWER(h.hotel_code),
+		LOWER(#{keyword})) > 0 THEN 3
+		WHEN INSTR(LOWER(h.hotel_id),
+		LOWER(#{keyword})) > 0 THEN 4
+		ELSE 9
+		END AS ord
+		FROM hotels h
+		JOIN
+		location l ON l.loc_id = h.loc_id
+		<where>
+			<if test="keyword != null and keyword != ''">
+				AND (
+				LOWER(h.hotel_name) LIKE '%' || LOWER(#{keyword}) ||
+				'%'
+				OR LOWER(h.hotel_code) LIKE '%' || LOWER(#{keyword}) || '%'
+				OR
+				LOWER(h.hotel_id) LIKE '%' || LOWER(#{keyword}) || '%'
+				OR
+				LOWER(l.loc_name) LIKE '%' || LOWER(#{keyword}) || '%'
+				)
+			</if>
+		</where>
+		ORDER BY ord ASC, l.loc_name ASC, h.hotel_name ASC
+		)
+		WHERE ROWNUM &lt;=
+		#{limit}
+	</select>
+
+</mapper>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="cart">
+
+  <!-- 1) 사용자 장바구니(단건) 조회 -->
+  <select id="selectCartByUserId" parameterType="string" resultType="cartvo">
+    SELECT USER_ID, REG_ID, PEOPLE_CNT
+      FROM CART
+     WHERE USER_ID = #{value}
+  </select>
+
+  <!-- 2) 사용자 장바구니(단건) 삭제 -->
+  <delete id="deleteCartByUserId" parameterType="string">
+    DELETE FROM CART
+     WHERE USER_ID = #{value}
+  </delete>
+
+  <!-- 3) 장바구니 담기(단건) -->
+  <insert id="insertCart" parameterType="cartvo">
+    INSERT INTO CART (USER_ID, REG_ID, PEOPLE_CNT)
+    VALUES (#{userId}, #{regId}, #{peopleCnt})
+  </insert>
+
+  <!-- 4) 인원수 변경(확장용) -->
+  <update id="updatePeopleCnt" parameterType="cartvo">
+    UPDATE CART
+       SET PEOPLE_CNT = #{peopleCnt}
+     WHERE USER_ID = #{userId}
+  </update>
+
+  <!-- 5) 장바구니(단건) + 상품정보 조인 조회(화면용) -->
+  <select id="selectCartDetailByUserId" parameterType="string" resultType="cartdetail">
+    SELECT
+        ct.USER_ID,
+        ct.REG_ID,
+        ct.PEOPLE_CNT,
+        r.REG_TITLE,
+        r.REG_PRICE,
+        r.START_DT,
+        r.END_DT,
+        c.CTRY_NAME,
+        l.LOC_NAME,
+        i.IMG_PATH,
+        i.ORIGIN_NAME
+      FROM CART ct
+      JOIN REGISTER_PROD r ON r.REG_ID = ct.REG_ID
+      JOIN PACKAGES p ON p.PACKAGE_ID = r.PACKAGE_ID
+      JOIN LOCATION l ON l.LOC_ID = p.LOC_ID
+      JOIN COUNTRY c ON c.CTRY_ID = p.CTRY_ID
+      LEFT JOIN IMG_MAPPING m
+        ON m.REG_ID = r.REG_ID
+       AND m.VIEW_SEQUENCE = (
+            SELECT MIN(m2.VIEW_SEQUENCE)
+              FROM IMG_MAPPING m2
+             WHERE m2.REG_ID = r.REG_ID
+       )
+      LEFT JOIN IMG_STORAGE i
+        ON i.IMG_NO = m.IMG_NO
+     WHERE ct.USER_ID = #{value}
+  </select>
+
+</mapper>

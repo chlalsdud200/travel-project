@@ -1,0 +1,382 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="regprod">
+
+	<resultMap type="regproddtovo" id="regproddtovoMap">
+		<result property="regId" column="REG_ID" />
+		<result property="pkgId" column="PACKAGE_ID" />
+		<result property="regTitle" column="REG_TITLE" />
+		<result property="regDate" column="REG_DATE" />
+		<result property="regPrice" column="REG_PRICE" />
+		<result property="regQty" column="REG_QTY" />
+		<result property="forSale" column="FOR_SALE" />
+		<result property="startDt" column="START_DT" />
+		<result property="endDt" column="END_DT" />
+		<result property="saleStartDt" column="SALE_START_DT" />
+		<result property="saleEndDt" column="SALE_END_DT" />
+		<result property="highlight" column="HIGHLIGHT" />
+		<result property="descriptionA" column="DESCRIPTION_A" />
+		<result property="descriptionB" column="DESCRIPTION_B" />
+		<result property="ctryName" column="CTRY_NAME" />
+		<result property="locName" column="LOC_NAME" />
+		<result property="imgPath" column="IMG_PATH" />
+		<result property="originName" column="ORIGIN_NAME" />
+		<result property="themeId" column="THEME_ID"/>
+	</resultMap>
+
+	<resultMap type="regprodvo" id="regprodvoMap">
+		<id property="regId" column="REG_ID" />
+		<result property="packageId" column="PACKAGE_ID" />
+		<result property="regTitle" column="REG_TITLE" />
+		<result property="regDate" column="REG_DATE" />
+		<result property="regPrice" column="REG_PRICE" />
+		<result property="regQty" column="REG_QTY" />
+		<result property="forSale" column="FOR_SALE" />
+		<result property="startDt" column="START_DT" />
+		<result property="endDt" column="END_DT" />
+		<result property="saleStartDt" column="SALE_START_DT" />
+		<result property="saleEndDt" column="SALE_END_DT" />
+		<result property="highlight" column="HIGHLIGHT" />
+		<result property="descriptionA" column="DESCRIPTION_A" />
+		<result property="descriptionB" column="DESCRIPTION_B" />
+	</resultMap>
+	
+	<resultMap type="itemvo" id="itemvoMap">
+		<id property="itemId"    column="ITEM_ID" />
+		<result property="itemTitle" column="ITEM_TITLE"/>
+		<result property="locId" column="LOC_ID"/>
+		<result property="themeId" column="THEME_ID"/>
+		<result property="imgPath"   column="IMG_PATH" />
+	</resultMap>
+
+	<select id="selectAllForSale"
+		parameterType="kr.or.ddit.tct.product.dto.FilterSearchDto"
+		resultMap="regproddtovoMap">
+		 SELECT r.REG_ID, r.PACKAGE_ID, r.REG_TITLE, r.REG_DATE, r.REG_PRICE,
+			r.REG_QTY, r.FOR_SALE, r.START_DT, r.END_DT, r.SALE_START_DT, r.SALE_END_DT,
+			r.HIGHLIGHT, r.DESCRIPTION_A, r.DESCRIPTION_B,
+			c.CTRY_NAME,
+			l.LOC_NAME,
+			i.IMG_PATH, i.ORIGIN_NAME
+		FROM REGISTER_PROD r
+		JOIN PACKAGES p ON (r.PACKAGE_ID = p.PACKAGE_ID)
+		JOIN LOCATION l ON (l.LOC_ID = p.LOC_ID)
+		JOIN COUNTRY c ON (p.CTRY_ID = c.CTRY_ID)
+		LEFT JOIN IMG_MAPPING m ON (m.REG_ID = r.REG_ID)
+		AND m.VIEW_SEQUENCE = (
+		SELECT MIN(m2.VIEW_SEQUENCE)
+		FROM IMG_MAPPING m2
+		WHERE m2.REG_ID = r.REG_ID
+		)
+		LEFT JOIN IMG_STORAGE i
+		ON i.IMG_NO = m.IMG_NO
+
+		<where>
+			r.FOR_SALE = 'Y'
+			
+			 <if test="themeIds != null and themeIds.size() > 0">
+			    AND p.THEME_ID IN
+			    <foreach collection="themeIds" item="t" open="(" separator="," close=")">
+			      #{t}
+			    </foreach>
+			  </if>
+			
+			  <if test="minPriceWon != null">
+			    AND r.REG_PRICE <![CDATA[ >= ]]> #{minPriceWon}
+			  </if>
+			  <if test="maxPriceWon != null">
+			    AND r.REG_PRICE <![CDATA[ <= ]]> #{maxPriceWon}
+			  </if>
+			
+			  <if test="startDate != null and startDate != ''">
+			    AND r.START_DT <![CDATA[ >= ]]> TO_DATE(#{startDate}, 'YYYY-MM-DD')
+			  </if>
+			
+			  <if test="endDate != null and endDate != ''">
+			    AND r.END_DT <![CDATA[ <= ]]> TO_DATE(#{endDate}, 'YYYY-MM-DD')
+			  </if>
+			
+			  <if test="(ctryIds != null and ctryIds.size() > 0) 
+			         or (locIds != null and locIds.size() > 0)">
+			    AND (
+			      <if test="ctryIds != null and ctryIds.size() > 0">
+			        p.CTRY_ID IN
+			        <foreach collection="ctryIds" item="id"
+			                 open="(" separator="," close=")">
+			          #{id}
+			        </foreach>
+			      </if>
+			
+			      <if test="(ctryIds != null and ctryIds.size() > 0)
+			             and (locIds != null and locIds.size() > 0)">
+			        OR
+			      </if>
+			
+			      <if test="locIds != null and locIds.size() > 0">
+			        p.LOC_ID IN
+			        <foreach collection="locIds" item="id"
+			                 open="(" separator="," close=")">
+			          #{id}
+			        </foreach>
+			      </if>
+			    )
+			  </if>
+			
+			  <if test="destination != null and destination != '' 
+			         and ((ctryIds == null or ctryIds.size() == 0)
+			         and (locIds == null or locIds.size() == 0))">
+			    AND 1 = 0
+			  </if>
+			
+			
+			  <if test="filter != null and filter != ''">
+			    <choose>
+			      <when test="filter == 'THM:CUL_HIS'">
+			        AND p.THEME_ID IN ('CUL','HIS')
+			      </when>
+			      <when test="filter == 'THM:FOD'">
+			        AND p.THEME_ID = 'FOD'
+			      </when>
+			      <when test="filter == 'THM:VAC_FES'">
+			        AND p.THEME_ID IN ('VAC', 'FES') 
+			      </when>
+			      <when test="filter == 'THM:GLF_LEI'">
+			        AND p.THEME_ID IN ('GLF', 'LEI')
+			      </when>
+			    </choose>
+			  </if>
+			
+			<if test="(filter == null or filter == '') and (keyword != null and keyword != '')">
+				AND (
+				r.REG_TITLE LIKE '%' || #{keyword} || '%'
+				OR c.CTRY_NAME LIKE '%' || #{keyword} || '%'
+				OR c.REGION_NAME LIKE '%' || #{keyword} || '%'
+				OR l.LOC_NAME LIKE '%' || #{keyword} || '%'
+				OR r.PACKAGE_ID LIKE '%' || #{keyword} || '%'
+				OR r.HIGHLIGHT LIKE '%' || #{keyword} || '%'
+				OR r.DESCRIPTION_A LIKE '%' || #{keyword} || '%'
+				<!-- OR r.DESCRIPTION_B '%' || #{keyword} || '%' -->
+				)
+			</if>
+			
+		</where>
+
+		<choose>
+			<when test="sort == 'startDtAsc'">
+				ORDER BY r.START_DT ASC
+			</when>
+			<when test="sort == 'startDtDesc'">
+				ORDER BY r.START_DT DESC
+			</when>
+			<when test="sort == 'priceAsc'">
+				ORDER BY r.REG_PRICE ASC
+			</when>
+			<when test="sort == 'priceDesc'">
+				ORDER BY r.REG_PRICE DESC
+			</when>
+			<otherwise>
+				ORDER BY r.START_DT DESC
+			</otherwise>
+		</choose>
+
+	</select>
+
+
+	<select id="selectDetailByRegId" parameterType="string" resultMap="regproddtovoMap">
+		SELECT r.REG_ID
+		     , r.PACKAGE_ID
+		     , r.REG_TITLE
+		     , r.REG_DATE
+		     , r.REG_PRICE
+		     , r.REG_QTY
+		     , r.FOR_SALE
+		     , r.START_DT
+		     , r.END_DT
+		     , r.SALE_START_DT
+		     , r.SALE_END_DT
+		     , r.HIGHLIGHT
+		     , r.DESCRIPTION_A
+		     , r.DESCRIPTION_B
+		     , p.THEME_ID AS THEME_ID
+		     , c.CTRY_NAME
+		     , l.LOC_NAME
+		     , i.IMG_PATH
+		     , i.ORIGIN_NAME
+		  FROM REGISTER_PROD r
+		  JOIN PACKAGES 	 p ON r.PACKAGE_ID = p.PACKAGE_ID
+		  JOIN LOCATION 	 l ON l.LOC_ID = p.LOC_ID
+		  JOIN COUNTRY 		 c ON p.CTRY_ID = c.CTRY_ID
+		  LEFT JOIN IMG_MAPPING m ON m.REG_ID = r.REG_ID	
+			AND m.VIEW_SEQUENCE = (
+				SELECT MIN(m2.VIEW_SEQUENCE)
+				  FROM IMG_MAPPING m2
+				 WHERE m2.REG_ID = r.REG_ID
+			)
+		  LEFT JOIN IMG_STORAGE i ON i.IMG_NO = m.IMG_NO
+		 WHERE r.REG_ID = #{value}
+	</select>
+	
+	<select id="findCountryIdsByName" parameterType="string" resultType="string">
+	  SELECT CTRY_ID
+	  FROM COUNTRY
+	  WHERE CTRY_NAME LIKE '%' || #{value} || '%'
+	</select>
+	
+	<select id="findLocationIdsByName" parameterType="string" resultType="string">
+	  SELECT LOC_ID
+	  FROM LOCATION
+	  WHERE LOC_NAME LIKE '%' || #{value} || '%'
+	</select>
+	
+	<select id="selectAllRegProd" resultType="regprodvo">
+	SELECT REG_ID,
+			PACKAGE_ID,
+			REG_TITLE,
+			REG_DATE,
+			REG_PRICE,
+			REG_QTY,
+			FOR_SALE,
+			START_DT,
+			END_DT,
+			SALE_START_DT,
+			SALE_END_DT,
+			HIGHLIGHT,
+			DESCRIPTION_A,
+			DESCRIPTION_B
+	FROM REGISTER_PROD
+	</select>
+	
+	<select id="selectImgPathListByRegId" parameterType="string" resultType="string">
+	  SELECT s.IMG_PATH
+	    FROM IMG_MAPPING m
+	    INNER JOIN IMG_STORAGE s
+	            ON s.IMG_NO = m.IMG_NO
+	   WHERE m.REG_ID = #{value}
+	   ORDER BY m.VIEW_SEQUENCE
+	</select>
+	
+	<select id="selectItemListByRegId" parameterType="string" resultMap="itemvoMap">
+	  SELECT DISTINCT
+	         i.ITEM_ID,
+	         i.ITEM_TITLE,
+	         i.LOC_ID,
+	         i.THEME_ID,
+	         s.IMG_PATH
+	    FROM REGISTER_PROD rp
+	    INNER JOIN PACKAGE_ITEM pi
+	            ON pi.PACKAGE_ID = rp.PACKAGE_ID
+	    INNER JOIN ITEM i
+	            ON i.ITEM_ID = pi.ITEM_ID
+	    LEFT JOIN ITEM_IMG_MAPPING im
+	           ON im.ITEM_ID = i.ITEM_ID
+	    LEFT JOIN IMG_STORAGE s
+	           ON s.IMG_NO = im.IMG_NO
+	   WHERE rp.REG_ID = #{value}
+	   ORDER BY i.ITEM_TITLE
+	</select>
+	
+	<select id="selectTop5" resultMap="regproddtovoMap">
+	  SELECT r.REG_ID,
+	         r.PACKAGE_ID,
+	         r.REG_TITLE,
+	         r.REG_DATE,
+	         r.REG_PRICE,
+	         r.REG_QTY,
+	         r.FOR_SALE,
+	         r.START_DT,
+	         r.END_DT,
+	         r.SALE_START_DT,
+	         r.SALE_END_DT,
+	         r.HIGHLIGHT,
+	         r.DESCRIPTION_A,
+	         r.DESCRIPTION_B,
+	         c.CTRY_NAME,
+	         l.LOC_NAME,
+	         i.IMG_PATH,
+	         i.ORIGIN_NAME
+	    FROM REGISTER_PROD r
+	    JOIN PACKAGES p ON r.PACKAGE_ID = p.PACKAGE_ID
+	    JOIN LOCATION l ON p.LOC_ID = l.LOC_ID
+	    JOIN COUNTRY  c ON p.CTRY_ID = c.CTRY_ID
+	    LEFT JOIN IMG_MAPPING m
+	      ON m.REG_ID = r.REG_ID
+	     AND m.VIEW_SEQUENCE = (
+	       SELECT MIN(m2.VIEW_SEQUENCE)
+	         FROM IMG_MAPPING m2
+	        WHERE m2.REG_ID = r.REG_ID
+	     )
+	    LEFT JOIN IMG_STORAGE i
+	      ON i.IMG_NO = m.IMG_NO
+	   WHERE r.REG_ID IN (
+	     '20260121_03',
+	     '20260121_05',
+	     '20260123_12',
+	     '20260123_13',
+	     '20260123_15'
+	   )
+	   ORDER BY CASE r.REG_ID
+	     WHEN '20260121_03' THEN 1
+	     WHEN '20260121_05' THEN 2
+	     WHEN '20260123_12' THEN 3
+	     WHEN '20260123_13' THEN 4
+	     WHEN '20260123_15' THEN 5
+	     ELSE 999
+	   END
+	</select>
+
+	<select id="selectItineraryRowsByRegId" parameterType="string" resultType="map">
+	  SELECT
+	      TO_NUMBER(pi.by_date)           AS "dayNo",
+	      pi.pitem_no                     AS "seq",
+	      'ITEM'                          AS "kind",
+	      i.item_title                    AS "itemTitle",
+	      CAST(NULL AS VARCHAR2(200))     AS "hotelName",
+	      1                               AS "sortKey"
+	  FROM register_prod rp
+	  JOIN package_item pi
+	    ON pi.package_id = rp.package_id
+	  LEFT JOIN item i
+	    ON i.item_id = pi.item_id
+	  WHERE rp.reg_id = #{regId}
+	    AND pi.item_id IS NOT NULL
+	
+	  UNION ALL
+	
+	  SELECT
+	      TO_NUMBER(pi.by_date)           AS "dayNo",
+	      MIN(pi.pitem_no)                AS "seq",
+	      'HOTEL'                         AS "kind",
+	      CAST(NULL AS VARCHAR2(200))     AS "itemTitle",
+	      h.hotel_name                    AS "hotelName",
+	      2                               AS "sortKey"
+	  FROM register_prod rp
+	  JOIN package_item pi
+	    ON pi.package_id = rp.package_id
+	  LEFT JOIN hotels h
+	    ON h.hotel_id = pi.hotel_id
+	  WHERE rp.reg_id = #{regId}
+	    AND pi.hotel_id IS NOT NULL
+	  GROUP BY TO_NUMBER(pi.by_date), h.hotel_name
+	
+	  ORDER BY
+	    "dayNo",
+	    "sortKey",
+	    "seq"
+	</select>
+	
+	<select id="selectReservedQtyByRegId" parameterType="string" resultType="int">
+	  SELECT NVL(SUM(oi.ORDER_QTY), 0) AS reserved_qty
+	  FROM ORDER_ITEM oi
+	  JOIN ORDERS o
+	    ON o.ORDER_NO = oi.ORDER_NO
+	  JOIN PAYMENT p
+	    ON p.ORDER_NO = o.ORDER_NO
+	  WHERE oi.REG_ID = #{value}
+	    AND NVL(p.PAY_STATUS, 'X') IN ('PAID')
+	    AND NVL(o.ORDER_STATUS, 'X') IN ('PAID')
+	</select>
+
+
+</mapper>
+

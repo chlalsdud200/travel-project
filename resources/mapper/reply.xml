@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="reply">
+
+  <!-- =========================================================
+       댓글 등록 (대댓글 지원: parentReNum 있으면 PARENT_RE_NUM 포함)
+       ========================================================= -->
+  <insert id="qnaReplyInsert" parameterType="ReplyVO">
+    INSERT INTO REPLY (
+      RE_NUM,
+      USER_ID,
+      QNA_NO,
+      <if test="parentReNum != null and parentReNum > 0">
+      PARENT_RE_NUM,
+      </if>
+      RE_CTT,
+      RE_CREATE
+    ) VALUES (
+      SEQ_RE_NUM.NEXTVAL,
+      #{userId},
+      #{qnaNo},
+      <if test="parentReNum != null and parentReNum > 0">
+      #{parentReNum},
+      </if>
+      #{reCtt},
+      SYSDATE
+    )
+  </insert>
+
+
+  <!-- =========================================================
+       댓글 목록 조회
+       - userId는 "진짜 작성자 ID" 그대로 내려줌
+       - writerRole로 화면에서 관리자 표시(👑)를 처리하는 방식
+       ========================================================= -->
+<select id="qnaReplyList" parameterType="int" resultType="ReplyVO">
+  SELECT
+    r.RE_NUM AS reNum,
+    r.USER_ID AS userId,
+    r.QNA_NO AS qnaNo,
+    r.PARENT_RE_NUM AS parentReNum,
+    r.RE_CTT AS reCtt,
+    TO_CHAR(r.RE_CREATE, 'YYYY-MM-DD HH24:MI') AS reCreate,
+    TO_CHAR(r.RE_UPDATE, 'YYYY-MM-DD HH24:MI') AS reUpdate,
+    NVL(UPPER(u.ROLE), 'USER') AS writerRole,
+    u.USER_NAME AS writerName
+  FROM REPLY r
+  LEFT JOIN USERS u ON u.USER_ID = r.USER_ID
+  WHERE r.QNA_NO = #{value}
+  ORDER BY NVL(r.PARENT_RE_NUM, r.RE_NUM) ASC, r.RE_NUM ASC
+</select>
+
+
+
+  <!-- =========================================================
+       댓글 삭제 (일반 사용자: 실삭제)
+       ========================================================= -->
+  <delete id="qnaReplyDelete" parameterType="int">
+    DELETE FROM REPLY
+    WHERE RE_NUM = #{value}
+  </delete>
+
+
+  <!-- =========================================================
+       관리자 삭제: UPDATE로 표식만 남김 (DB에 문장 직접 저장 X)
+       - 화면에서는 reCtt == '[ADMIN_DELETED]'일 때 문구 출력
+       기존 마커 제거 후 DELETED만 붙이기
+       ========================================================= -->
+ <update id="qnaReplyAdminDelete" parameterType="int">
+  UPDATE REPLY
+     SET RE_CTT =
+       CASE
+         WHEN RE_CTT LIKE '[ADMIN_DELETED]%' THEN RE_CTT
+         ELSE '[ADMIN_DELETED] ' ||
+              TRIM(REGEXP_REPLACE(RE_CTT,
+                '^\[(ADMIN_DELETED|ADMIN_EDITED|USER_REEDIT)\]\s*',
+                ''
+              ))
+       END,
+         RE_UPDATE = SYSDATE
+   WHERE RE_NUM = #{value}
+</update>
+
+
+
+
+  <!-- =========================================================
+       댓글 수정 (일반 사용자)
+       ========================================================= -->
+<update id="qnaReplyUpdate" parameterType="ReplyVO">
+  UPDATE REPLY
+     SET RE_CTT    = #{reCtt},
+         RE_UPDATE = SYSDATE
+   WHERE RE_NUM = #{reNum}
+     AND RE_CTT NOT LIKE '[ADMIN_EDITED]%'
+     AND RE_CTT NOT LIKE '[ADMIN_DELETED]%'
+</update>
+
+
+  <!-- =========================================================
+       관리자 수정: 마커 + 수정내용 저장 (문장 X, 관리 표식만)
+       - 화면에서는 '[ADMIN_EDITED]' 감지 시 "관리자에 의해 수정" 표시
+       ========================================================= -->
+  <update id="qnaReplyAdminUpdate" parameterType="ReplyVO">
+    UPDATE REPLY
+       SET RE_CTT    = '[ADMIN_EDITED] ' || #{reCtt},
+           RE_UPDATE = SYSDATE
+     WHERE RE_NUM = #{reNum}
+  </update>
+
+
+  <!-- =========================================================
+       권한 체크용: 댓글 작성자 조회 (서버에서 최종 검증용)
+       ========================================================= -->
+  <select id="selectReplyWriterId" parameterType="int" resultType="string">
+    SELECT USER_ID
+      FROM REPLY
+     WHERE RE_NUM = #{value}
+  </select>
+  
+  <!-- ==========================
+     리뷰 댓글 등록
+     ========================== -->
+<insert id="reviewReplyInsert" parameterType="ReplyVO">
+  INSERT INTO REPLY (
+    RE_NUM,
+    USER_ID,
+    REVIEW_NO,
+    <if test="parentReNum != null and parentReNum > 0">
+    PARENT_RE_NUM,
+    </if>
+    RE_CTT,
+    RE_CREATE
+  ) VALUES (
+    SEQ_RE_NUM.NEXTVAL,
+    #{userId},
+    #{reviewNo},
+    <if test="parentReNum != null and parentReNum > 0">
+    #{parentReNum},
+    </if>
+    #{reCtt},
+    SYSDATE
+  )
+</insert>
+
+<!-- ==========================
+     리뷰 댓글 목록 조회
+     (writerRole/writerName 포함: 관리자 이름 표시용)
+     ========================== -->
+<select id="reviewReplyList" parameterType="int" resultType="ReplyVO">
+  SELECT
+    r.RE_NUM AS reNum,
+    r.USER_ID AS userId,
+    r.REVIEW_NO AS reviewNo,
+    r.PARENT_RE_NUM AS parentReNum,
+    r.RE_CTT AS reCtt,
+    TO_CHAR(r.RE_CREATE, 'YYYY-MM-DD HH24:MI') AS reCreate,
+    TO_CHAR(r.RE_UPDATE, 'YYYY-MM-DD HH24:MI') AS reUpdate,
+    NVL(UPPER(u.ROLE), 'USER') AS writerRole,
+    u.USER_NAME AS writerName
+  FROM REPLY r
+  LEFT JOIN USERS u
+    ON u.USER_ID = r.USER_ID
+  WHERE r.REVIEW_NO = #{value}
+  ORDER BY NVL(r.PARENT_RE_NUM, r.RE_NUM) ASC, r.RE_NUM ASC
+</select>
+
+
+<!-- ==========================
+     리뷰 댓글 삭제 (일반 사용자: 실삭제)
+     ========================== -->
+<delete id="reviewReplyDelete" parameterType="int">
+  DELETE FROM REPLY
+  WHERE RE_NUM = #{value}
+</delete>
+
+
+<!-- ==========================
+     리뷰 댓글 관리자 삭제 (마커 및 디비 저장)
+     ========================== -->
+<update id="reviewReplyAdminDelete" parameterType="int">
+  UPDATE REPLY
+     SET RE_CTT =
+         CASE
+           WHEN RE_CTT LIKE '[ADMIN_DELETED]%' THEN RE_CTT
+           ELSE '[ADMIN_DELETED] ' || RE_CTT
+         END,
+         RE_UPDATE = SYSDATE
+   WHERE RE_NUM = #{value}
+</update>
+
+<!-- ==========================
+     리뷰 댓글 수정 (일반 사용자)
+     ========================== -->
+<update id="reviewReplyUpdate" parameterType="ReplyVO">
+  UPDATE REPLY
+     SET RE_CTT    = #{reCtt},
+         RE_UPDATE = SYSDATE
+   WHERE RE_NUM = #{reNum}
+     AND RE_CTT NOT LIKE '[ADMIN_EDITED]%'
+     AND RE_CTT NOT LIKE '[ADMIN_DELETED]%'
+</update>
+
+<!-- ==========================
+     리뷰 댓글 관리자 수정 (마커 추가)
+     ========================== -->
+<update id="reviewReplyAdminUpdate" parameterType="ReplyVO">
+  UPDATE REPLY
+     SET RE_CTT    = '[ADMIN_EDITED] ' || #{reCtt},
+         RE_UPDATE = SYSDATE
+   WHERE RE_NUM = #{reNum}
+</update>
+  
+
+</mapper>

@@ -1,0 +1,1173 @@
+/* mypage.jsp에서 분리한 마이페이지 전용 CSS */
+
+:root {
+	--max: 1200px;
+	--padX: 16px;
+	--gap: 22px;
+	--r: 16px;
+	--pill: 999px;
+	--bg: #f6f8ff;
+	--card: #ffffff;
+	--ink: #0f172a;
+	--muted: #64748b;
+	--line: rgba(15, 23, 42, .10);
+	--blue: #1b7bff;
+	--blueSoft: rgba(27, 123, 255, .12);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	font-family: system-ui, -apple-system, "Noto Sans KR", sans-serif;
+	color: var(--ink);
+	background: var(--bg);
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+button, input, select {
+	font: inherit;
+}
+
+button {
+	cursor: pointer;
+}
+
+/* 헤더 관련 스타일(brand, searchbar, cat 등)은 tctHeader.jsp에 있으므로 삭제함 */
+.container {
+	width: min(var(--max), 100%);
+	margin: 0 auto;
+	padding: 14px var(--padX);
+	display: grid;
+	grid-template-columns: 260px 1fr 360px;
+	align-items: center;
+	gap: 14px;
+}
+
+/* 마이페이지 전용 스타일 */
+main {
+	width: min(var(--max), 100%);
+	margin: 18px auto 48px;
+	padding: 0 var(--padX);
+}
+
+.mypage {
+	display: grid;
+	grid-template-columns: 280px 1fr;
+	gap: var(--gap);
+	align-items: start;
+}
+
+.side {
+	background: rgba(255, 255, 255, .88);
+	border: 1px solid rgba(15, 23, 42, .06);
+	border-radius: var(--r);
+	padding: 16px;
+}
+
+.sideHead {
+	font-size: 18px;
+	font-weight: 950;
+	margin: 2px 0 14px;
+}
+
+.sideList {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.sideItem {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 12px 12px;
+	border-radius: 12px;
+	border: 1px solid rgba(15, 23, 42, .08);
+	background: #fff;
+	font-weight: 900;
+	font-size: 13px;
+}
+
+.sideItem.active {
+	border-color: rgba(27, 123, 255, .35);
+	background: var(--blueSoft);
+	color: var(--blue);
+}
+
+.content {
+	display: flex;
+	flex-direction: column;
+	gap: var(--gap);
+}
+
+.card {
+	background: #fff;
+	border: 1px solid rgba(15, 23, 42, .06);
+	border-radius: var(--r);
+	padding: 18px;
+}
+
+.cardHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid rgba(15, 23, 42, .08);
+	margin-bottom: 12px;
+}
+
+.cardHeader h2 {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 950;
+}
+
+.more {
+	border: 0;
+	background: transparent;
+	color: rgba(15, 23, 42, .55);
+	font-weight: 900;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+}
+
+th, td {
+	padding: 10px 8px;
+	border-bottom: 1px solid rgba(15, 23, 42, .08);
+	text-align: left;
+	color: rgba(15, 23, 42, .80);
+}
+
+th {
+	font-weight: 950;
+	color: rgba(15, 23, 42, .60);
+}
+
+/* =========================
+   결제내역 카드 (프리미엄 톤)
+   ========================= */
+.payList {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.payCard {
+	display: flex;
+	gap: 14px;
+	padding: 14px;
+	border-radius: 18px;
+	cursor: pointer;
+	/* 회색 느낌 제거: 화이트 + 은은한 그라데이션 */
+	background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%,
+		rgba(248, 250, 252, 1) 100%);
+	border: 1px solid rgba(15, 23, 42, .10);
+	/* 더 고급스러운 그림자 */
+	box-shadow: 0 10px 30px rgba(15, 23, 42, .08);
+	transition: transform .14s ease, box-shadow .14s ease, border-color .14s
+		ease;
+}
+
+.payCard:hover {
+	transform: translateY(-2px);
+	box-shadow: 0 18px 50px rgba(15, 23, 42, .12);
+	border-color: rgba(37, 99, 235, .22); /* primary 계열 느낌 */
+}
+
+.payThumb { /* 썸네일 바꾸기*/
+	margin-top: 6px;
+	width: 128px;
+	height: 122px;
+	border-radius: 16px;
+	overflow: hidden;
+	flex: 0 0 auto;
+	position: relative;
+	/* 썸네일 자리도 회색 말고 은은한 그라데이션 */
+	background: linear-gradient(135deg, rgba(37, 99, 235, .10),
+		rgba(99, 102, 241, .10), rgba(16, 185, 129, .10));
+	border: 1px solid rgba(15, 23, 42, .08);
+}
+
+.payThumb img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+/* NO IMAGE 문구도 고급스럽게 */
+.payThumb div {
+	font-weight: 950;
+	font-size: 12px;
+	color: rgba(15, 23, 42, .65);
+	letter-spacing: .2px;
+}
+
+/* 본문 */
+.payMeta {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.payTitle {
+	font-weight: 950;
+	font-size: 15px;
+	color: var(--ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* 태그 영역 */
+.paySub {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.payTag {
+	font-size: 11px;
+	font-weight: 950;
+	padding: 6px 10px;
+	border-radius: 999px;
+	border: 1px solid rgba(15, 23, 42, .10);
+	background: rgba(255, 255, 255, .8);
+	color: rgba(15, 23, 42, .80);
+	backdrop-filter: blur(6px);
+}
+
+/* 태그를 “색감 있게” (테마/지역 분리) */
+.payTag--theme {
+	border-color: rgba(37, 99, 235, .20);
+	background: rgba(37, 99, 235, .10);
+	color: rgba(37, 99, 235, .95);
+}
+
+.payTag--loc {
+	border-color: rgba(16, 185, 129, .22);
+	background: rgba(16, 185, 129, .10);
+	color: rgba(5, 150, 105, .95);
+}
+
+/* 정보 그리드 */
+.payRows {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px 14px;
+	font-size: 12px;
+	color: rgba(15, 23, 42, .76);
+}
+
+.payRows>div {
+	padding: 8px 10px;
+	border-radius: 12px;
+	background: rgba(15, 23, 42, .03);
+	border: 1px solid rgba(15, 23, 42, .06);
+}
+
+.payRows b {
+	display: inline-block;
+	width: 56px; /* 라벨 정렬 */
+	color: rgba(15, 23, 42, .62);
+	font-weight: 950;
+}
+
+.payMeta small {
+	color: rgba(15, 23, 42, .60);
+	font-weight: 900;
+}
+
+/* 우측 액션 */
+.payActions {
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	align-items: flex-end;
+	gap: 10px;
+	min-width: 120px;
+}
+
+.payAmount {
+	font-weight: 1000;
+	font-size: 15px;
+	color: var(--ink);
+	letter-spacing: .2px;
+}
+
+/* 취소완료 금액: 가운데 취소선 */
+.payAmount.isCanceled{
+  text-decoration: line-through;       /* 가운데 가로줄 */
+  text-decoration-thickness: 2px;      /* 선 두께 */
+  text-decoration-color: rgba(245,158,11,.85); /* 취소완료(amber) 톤 */
+  opacity: .85;                        /* 살짝 힘 빼기 */
+}
+
+/* 취소완료 카드 전체 톤다운(회색 느낌) */
+.payCard.isCanceled{
+  background: rgba(100,116,139,.12);   /* 0.06 -> 0.12 */
+  border-color: rgba(100,116,139,.28); /* 0.18 -> 0.28 */
+}
+
+/* 카드 안 텍스트도 살짝 힘 빼기 */
+.payCard.isCanceled .payMeta,
+.payCard.isCanceled .payRows,
+.payCard.isCanceled .paySub,
+.payCard.isCanceled .payAmount{
+   color: rgba(30,41,59,.72);
+}
+
+
+/* ================================
+   결제취소 버튼: '느낌 있는' 호버/액티브
+   - 살짝 그라데이션 + 테두리 강조
+   - 호버: 위로 살짝 뜨고, 광택이 지나감
+   - 클릭: 눌리는 느낌
+================================ */
+
+/* 기본 버튼 */
+.payCancel{
+  position: relative;                 /* 광택(가상요소) 올리려고 */
+  overflow: hidden;                   /* 광택이 밖으로 안 새게 */
+  border-radius: 12px;                /* 기존 톤에 맞는 둥근 버튼 */
+  padding: 10px 14px;
+  font-weight: 950;
+  letter-spacing: -0.2px;
+
+  /* 기본 색감: 지금 프로젝트 톤(ink/primary) 안 깨는 범위에서 '액션' 느낌 */
+  background: linear-gradient(180deg,
+    rgba(239,68,68,.16) 0%,
+    rgba(239,68,68,.10) 100%
+  );
+  border: 1px solid rgba(239,68,68,.28);
+  color: rgba(220,38,38,1);
+
+  /* 부드러운 인터랙션 */
+  transition:
+    transform .16s ease,
+    box-shadow .16s ease,
+    border-color .16s ease,
+    background .16s ease,
+    color .16s ease,
+    filter .16s ease;
+}
+
+/* 호버: '뜬다 + 선명해진다 + 그림자' */
+.payCancel:hover{
+  transform: translateY(-2px);
+  background: linear-gradient(180deg,
+    rgba(239,68,68,.22) 0%,
+    rgba(239,68,68,.12) 100%
+  );
+  border-color: rgba(239,68,68,.42);
+  box-shadow:
+    0 10px 22px rgba(239,68,68,.18),
+    0  3px  8px rgba(15,23,42,.10);
+}
+
+/* 클릭(눌림) */
+.payCancel:active{
+  transform: translateY(0px);
+  box-shadow:
+    0  4px 10px rgba(239,68,68,.12),
+    0  2px  6px rgba(15,23,42,.08);
+  filter: brightness(.98);
+}
+
+/* 호버 시 "광택"이 슥 지나가는 느낌 */
+.payCancel::after{
+  content:"";
+  position:absolute;
+  top:-60%;
+  left:-40%;
+  width: 60%;
+  height: 220%;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,.45) 50%,
+    rgba(255,255,255,0) 100%
+  );
+  opacity: 0;                         /* 기본은 숨김 */
+  transition: opacity .16s ease, left .32s ease;
+  pointer-events:none;
+}
+
+/* 호버에만 광택 이동 */
+.payCancel:hover::after{
+  opacity: .9;
+  left: 110%;
+}
+
+/* 키보드 포커스(접근성) */
+.payCancel:focus-visible{
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(239,68,68,.22),
+    0 10px 22px rgba(239,68,68,.16);
+}
+
+
+
+@media ( max-width :560px) {
+	.payCard {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.payActions {
+		flex-direction: row;
+		align-items: center;
+		min-width: auto;
+	}
+	.payThumb {
+		width: 100%;
+		height: 180px;
+	}
+	.payRows {
+		grid-template-columns: 1fr;
+	}
+}
+
+.section {
+	display: none;
+}
+
+.section.active {
+	display: block;
+}
+
+.empty {
+	min-height: 220px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	color: rgba(15, 23, 42, .65);
+}
+
+.empty .icon {
+	width: 46px;
+	height: 46px;
+	border-radius: 999px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid rgba(15, 23, 42, .10);
+	background: rgba(15, 23, 42, .03);
+	font-weight: 950;
+}
+
+.ctaRow {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 10px;
+	width: 100%;
+}
+
+.cta {
+	height: 38px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 12px;
+	border-radius: 12px;
+	border: 1px solid rgba(27, 123, 255, .35);
+	background: rgba(27, 123, 255, .08);
+	color: var(--blue);
+	font-weight: 950;
+	font-size: 12px;
+}
+
+/* ✅ 핵심: profileArea 안에 들어오는 fragment는 항상 폭 100% */
+#profileArea {
+	width: 100%;
+	display: block;
+}
+
+#profileArea>* {
+	width: 100% !important;
+	max-width: none !important;
+	margin: 0 !important;
+}
+
+#profileArea form {
+	width: 100% !important;
+}
+
+@media ( max-width : 1050px) {
+	.container {
+		grid-template-columns: 1fr;
+	}
+	.mypage {
+		grid-template-columns: 1fr;
+	}
+}
+
+
+
+
+
+/* ===== 마이페이지 관심상품(wish) ===== */
+.wishTools{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; flex-wrap:wrap; margin-bottom:12px;
+}
+.wishTools .left{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  font-size:12px; font-weight:950; color: rgba(15,23,42,.72);
+}
+.wishTools .right{ display:flex; gap:8px; flex-wrap:wrap; }
+
+.wishAll{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 10px; border-radius:12px;
+  border:1px solid rgba(15,23,42,.10); background:#fff;
+}
+.wishAll input{ width:16px; height:16px; cursor:pointer; }
+
+.wishBtn{
+  height:36px; padding:0 12px; border-radius:12px;
+  border:1px solid rgba(15,23,42,.10); background:#fff;
+  font-weight:950; font-size:12px;
+}
+.wishBtn.primary{ border-color: rgba(27,123,255,.35); background: rgba(27,123,255,.08); color: var(--blue); }
+.wishBtn.danger { border-color: rgba(239,68,68,.25); background: rgba(239,68,68,.08); color: rgba(185,28,28,.95); }
+
+.wishList{ display:flex; flex-direction:column; gap:14px; }
+
+.wishCard{
+  display:flex; gap:14px; padding:14px; border-radius:18px;
+  background: linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(248,250,252,1) 100%);
+  border:1px solid rgba(15,23,42,.10);
+  box-shadow: 0 10px 30px rgba(15,23,42,.08);
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+  cursor:pointer; /* ✅ 카드 클릭 토글 */
+}
+.wishCard:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 18px 50px rgba(15,23,42,.12);
+  border-color: rgba(37, 99, 235, .22);
+}
+.wishCard.is-selected{
+  border-color: rgba(27,123,255,.35);
+  box-shadow: 0 18px 50px rgba(27,123,255,.12);
+  background: rgba(27,123,255,.06);
+}
+
+.wishCheck{ margin-top:10px; }
+.wishCheck input{ width:18px; height:18px; cursor:pointer; }
+
+.wishThumb{
+  margin-top:6px; width:128px; height:122px; border-radius:16px; overflow:hidden; flex:0 0 auto;
+  background: linear-gradient(135deg, rgba(37,99,235,.10), rgba(99,102,241,.10), rgba(16,185,129,.10));
+  border:1px solid rgba(15,23,42,.08);
+}
+.wishThumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+.wishMeta{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
+.wishTitle{ font-weight:950; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+.wishSub{ display:flex; flex-wrap:wrap; gap:8px; }
+.wishTag{
+  font-size:11px; font-weight:950; padding:6px 10px; border-radius:999px;
+  border:1px solid rgba(15,23,42,.10); background: rgba(255,255,255,.8);
+  color: rgba(15,23,42,.80);
+}
+.wishTag.loc{ border-color: rgba(16,185,129,.22); background: rgba(16,185,129,.10); color: rgba(5,150,105,.95); }
+.wishTag.date{ border-color: rgba(37,99,235,.20); background: rgba(37,99,235,.10); color: rgba(37,99,235,.95); }
+
+.wishActions{ display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; gap:10px; min-width:140px; }
+.wishPrice{ font-weight:1000; font-size:15px; }
+.wishActionRow{ display:flex; gap:8px; }
+
+.wishBtn.primary.inCart{
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+
+/* [교체 완료 메시지를 alert 대신 가볍게 보여주기 위해
+    하단 중앙에 1.6초 표시되는 wish 전용 토스트 */
+.wishToast{
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  background: rgba(15,23,42,.92);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 99999;
+}
+.wishToast.show{
+  opacity: 1;
+  transform: translateX(-50%) translateY(-6px);
+}
+
+/* 결제 상태 배지: "결제완료"를 눈에 보이게 만들기 위한 UI 요소 */
+.payTitle{
+  display:flex;                 /* 제목 + 상태배지를 한 줄에 배치하려고 */
+  align-items:center;           /* 세로 가운데 정렬 */
+  gap:10px;                     /* 제목과 배지 사이 간격 */
+}
+
+/* 제목 텍스트만 말줄임 적용하려고(배지는 고정 표시) */
+.payTitleText{
+  flex:1;                       /* 배지 옆에서 남는 공간을 제목이 차지 */
+  min-width:0;                  /* 말줄임이 동작하려면 필요 */
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* 상태 배지 공통 */
+.payStatus{
+  font-size:11px;               /* 배지는 작게 */
+  font-weight:950;              /* 강조 */
+  padding:4px 10px;             /* 알약 형태 */
+  border-radius:999px;          /* pill */
+  border:1px solid rgba(15,23,42,.12);
+  background:#fff;
+  white-space:nowrap;           /* "결제완료" 줄바꿈 방지 */
+}
+
+/* 상태별 색감(프로젝트 톤에 맞게 '연한 강조'만) */
+.payStatus--paid{
+  background: rgba(34,197,94,.12);
+  border-color: rgba(34,197,94,.25);
+  color: rgba(22,163,74,1);
+}
+/* 취소완료(amber 톤: 노랑~주황 사이) */
+.payStatus--canceled{
+  background: rgba(245,158,11,.16);    /* amber 느낌 */
+  border-color: rgba(245,158,11,.30);
+  color: rgba(180,83,9,1);             /* 진한 주황-브라운 텍스트 */
+}
+
+.payStatus--failed{
+  background: rgba(100,116,139,.12);
+  border-color: rgba(100,116,139,.22);
+  color: rgba(51,65,85,1);
+}/* [시작] 문의게시판 리뉴얼 (리스트+그리드 형태) */
+
+/* ✅ 핵심 정책
+   - 헤더/행 컬럼 수를 JS와 100% 동일하게 맞춘다(6칸)
+   - 아코디언은 부모 높이가 늘어나서 아래 카드가 "밀리게" 한다
+   - 상세 버튼은 별도 버튼 UX로 만들고, 호버/눌림 피드백을 준다
+*/
+
+/* 컨테이너 */
+.qnaContainer{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+}
+
+/* ✅ 6칸 통일: 번호 | 제목 | 작성일 | 상태 | 상세 | 화살표 */
+.qnaGrid{
+  display:grid;
+  grid-template-columns: 72px 1fr 120px 140px 72px 44px;
+  gap: 10px;
+  align-items:center;
+  padding: 0 20px;
+}
+
+/* 헤더 */
+.qnaHeader{
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(15,23,42,.10);
+  margin-bottom: 10px;
+}
+.qnaHeader > div{
+  font-size:12px;
+  font-weight:900;
+  color:#64748b;
+  text-align:center;
+}
+.qnaHeader .col-title{
+  text-align:left;
+  padding-left: 4px;
+}
+
+/* 컬럼 정렬: 제목만 왼쪽, 나머지 중앙 */
+.qnaGrid > div:nth-child(1),
+.qnaGrid > div:nth-child(3),
+.qnaGrid > div:nth-child(4),
+.qnaGrid > div:nth-child(5),
+.qnaGrid > div:nth-child(6){ text-align:center; }
+.qnaGrid > div:nth-child(2){ text-align:left; min-width:0; }
+
+/* 카드 */
+.qnaItem{
+  /* height 고정 금지(아코디언 펼치면 아래가 밀려야 함) */
+  min-height: 60px;
+  height: auto;
+
+  background:#fff;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 14px;
+  cursor:pointer;
+
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+  margin-bottom: 10px;
+}
+
+/* 접힌 상태 한 줄 높이는 유지 */
+.qnaItem > .qnaGrid{ height: 60px; }
+
+/* 호버: 살짝 떠 보이게 */
+.qnaItem:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(15,23,42,.08);
+  border-color: rgba(27,123,255,.28);
+}
+
+/* ✅ 펼침 상태 */
+.qnaItem.is-open{
+  background: rgba(241,245,249,.75);
+  border-color: rgba(27,123,255,.32);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-bottom: 0;
+}
+
+/* 번호 */
+.qnaNo{
+  font-size:13px;
+  color:#94a3b8;
+  font-weight:900;
+}
+
+/* 제목 */
+.qnaTitleArea{
+  display:flex;
+  align-items:center;
+  gap: 8px;
+  min-width:0;
+}
+.qnaSubject{
+  font-size: 14px;
+  font-weight: 950;
+  color:#0f172a;
+  white-space: nowrap;
+  overflow:hidden;
+  text-overflow: ellipsis;
+}
+
+/* 상태 배지 */
+.qnaBadge{
+  display:inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 950;
+  border: 1px solid rgba(15,23,42,.10);
+  background:#fff;
+  white-space: nowrap;
+}
+.qnaBadge.wait{ background:#f1f5f9; color:#64748b; border-color: rgba(100,116,139,.20); }
+.qnaBadge.done{ background: rgba(27,123,255,.10); color:#1b7bff; border-color: rgba(27,123,255,.22); }
+
+/* 답변일(완료일) */
+.qnaAnsAt{
+  margin-top:4px;
+  font-size:11px;
+  font-weight:900;
+  color:#94a3b8;
+}
+
+/* ✅ 상세 이동 버튼(세련되게) */
+.qnaGoBtn{
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid rgba(15,23,42,.10);
+  background: rgba(255,255,255,.95);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  box-shadow: 0 6px 16px rgba(15,23,42,.08);
+  cursor:pointer;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+}
+.qnaGoBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(27,123,255,.28);
+  background: rgba(27,123,255,.06);
+}
+.qnaGoBtn:active{
+  transform: translateY(0px);
+  box-shadow: 0 3px 10px rgba(15,23,42,.10);
+}
+
+/* 화살표 */
+.qnaArrow{
+  text-align:center;
+  color:#cbd5e1;
+  transition: transform .16s ease, color .16s ease;
+}
+.qnaItem.is-open .qnaArrow{
+  transform: rotate(180deg);
+  color:#1b7bff;
+}
+
+/* =========================================
+   [수정] 상세 영역 (아코디언) - 질문 vs 답변 디자인 분리
+   ========================================= */
+
+.qnaDetail {
+    display: none;
+    padding: 24px;
+    background: #fff;
+    border-top: 1px solid rgba(15, 23, 42, .06);
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+    /* 펼쳐질 때 부드럽게 */
+    animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* -------------------------------------------
+   1. 질문(문의) 영역: 회색 말풍선 스타일
+   (.ans 클래스 안에 있지 않은 .row를 타겟팅)
+   ------------------------------------------- */
+.qnaDetail > .row {
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, .06);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    
+    /* [수정] 80px -> 120px로 변경 (Q. 아이콘 공간 확보) */
+    display: grid;
+    grid-template-columns: 120px 1fr; 
+    gap: 16px;
+}
+
+/* 질문 라벨 ("문의내용") */
+.qnaDetail > .row .lb {
+    font-size: 13px;
+    font-weight: 900;
+    color: #64748b;
+    display: flex;
+    align-items: flex-start; /* 상단 정렬 */
+    padding-top: 2px;
+}
+
+/* 'Q' 아이콘 효과 추가 */
+.qnaDetail > .row .lb::before {
+    content: "Q.";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #94a3b8;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 6px;
+    margin-right: 6px;
+}
+
+/* 질문 본문 텍스트 */
+.qnaDetail > .row .val {
+    font-size: 14px;
+    color: #334155;
+    line-height: 1.6;
+    white-space: pre-wrap; /* 줄바꿈 유지 */
+}
+
+
+/* -------------------------------------------
+   2. 답변 영역: 파란색 관리자 카드 스타일
+   (.ans 클래스 내부)
+   ------------------------------------------- */
+.qnaDetail .ans {
+    position: relative;
+    background: #eff6ff; /* 아주 연한 파란색 */
+    border: 1px solid rgba(27, 123, 255, .15); /* 파란 테두리 */
+    border-radius: 12px;
+    padding: 20px;
+}
+
+/* 관리자 답변임을 표시하는 헤더 장식 (선택사항) */
+.qnaDetail .ans::before {
+    content: "관리자 답변";
+    position: absolute;
+    top: -10px;
+    left: 20px;
+    background: #1b7bff;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 999px;
+    box-shadow: 0 2px 4px rgba(27, 123, 255, .2);
+}
+
+/* 답변 내부의 각 줄 (답변일, 답변내용) */
+.qnaDetail .ans .row {
+    display: grid;
+    /* [수정] 위와 줄을 맞추기 위해 여기도 120px로 변경 권장 */
+    grid-template-columns: 120px 1fr;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+.qnaDetail .ans .row:last-child { margin-bottom: 0; }
+
+/* 답변 라벨 */
+.qnaDetail .ans .lb {
+    color: #1b7bff; /* 파란 글씨 */
+    font-weight: 900;
+    font-size: 13px;
+    text-align: right; /* 라벨 우측 정렬 */
+    padding-right: 6px;
+}
+
+/* 답변 내용 */
+.qnaDetail .ans .val {
+    font-size: 14px;
+    color: #1e293b; /* 진한 남색 */
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+/* 답변 날짜는 조금 연하게 */
+.qnaDetail .ans .row:first-child .val {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+/* =========================
+   [시작] 후기게시판(REVIEW) - QNA와 동일 톤
+   ========================= */
+
+/* 컨테이너 */
+.reviewContainer{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+}
+
+/* ✅ 6칸 통일: 번호 | 제목 | 작성일 | 별점 | 상세 | 화살표 */
+.reviewGrid{
+  display:grid;
+  grid-template-columns: 72px 1fr 120px 140px 72px 44px;
+  gap: 10px;
+  align-items:center;
+  padding: 0 20px;
+}
+
+/* 헤더 */
+.reviewHeader{
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(15,23,42,.10);
+  margin-bottom: 10px;
+}
+.reviewHeader > div{
+  font-size:12px;
+  font-weight:900;
+  color:#64748b;
+  text-align:center;
+}
+.reviewHeader .col-title{
+  text-align:left;
+  padding-left: 4px;
+}
+
+/* 컬럼 정렬: 제목만 왼쪽, 나머지 중앙 */
+.reviewGrid > div:nth-child(1),
+.reviewGrid > div:nth-child(3),
+.reviewGrid > div:nth-child(4),
+.reviewGrid > div:nth-child(5),
+.reviewGrid > div:nth-child(6){ text-align:center; }
+.reviewGrid > div:nth-child(2){ text-align:left; min-width:0; }
+
+/* 카드 */
+.reviewItem{
+  min-height: 60px;
+  height: auto;
+  background:#fff;
+  border: 1px solid rgba(15,23,42,.08);
+  border-radius: 14px;
+  cursor:pointer;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+  margin-bottom: 10px;
+}
+
+/* 접힌 상태 한 줄 높이 */
+.reviewItem > .reviewGrid{ height: 60px; }
+
+/* 호버 */
+.reviewItem:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(15,23,42,.08);
+  border-color: rgba(27,123,255,.28);
+}
+
+/* 펼침 상태 */
+.reviewItem.is-open{
+  background: rgba(241,245,249,.75);
+  border-color: rgba(27,123,255,.32);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-bottom: 0;
+}
+
+/* 번호 */
+.reviewNo{
+  font-size:13px;
+  color:#94a3b8;
+  font-weight:900;
+}
+
+/* 제목 */
+.reviewTitleArea{
+  display:flex;
+  flex-direction:column;
+  gap: 4px;
+  min-width:0;
+}
+.reviewSubject{
+  font-size: 14px;
+  font-weight: 950;
+  color:#0f172a;
+  white-space: nowrap;
+  overflow:hidden;
+  text-overflow: ellipsis;
+}
+.reviewSub{
+  font-size:12px;
+  font-weight:800;
+  color:#64748b;
+  white-space: nowrap;
+  overflow:hidden;
+  text-overflow: ellipsis;
+}
+
+/* 별점(텍스트/별문자열) */
+.reviewRate{
+  font-weight:900;
+  color: rgba(15,23,42,.78);
+}
+
+/* 상세 이동 버튼 */
+.reviewGoBtn{
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid rgba(15,23,42,.10);
+  background: rgba(255,255,255,.95);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow: 0 6px 16px rgba(15,23,42,.08);
+  cursor:pointer;
+  transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
+}
+.reviewGoBtn:hover{
+  transform: translateY(-1px);
+  border-color: rgba(27,123,255,.28);
+  background: rgba(27,123,255,.06);
+}
+.reviewGoBtn:active{
+  transform: translateY(0px);
+  box-shadow: 0 3px 10px rgba(15,23,42,.10);
+}
+
+/* 화살표 */
+.reviewArrow{
+  text-align:center;
+  color:#cbd5e1;
+  transition: transform .16s ease, color .16s ease;
+}
+.reviewItem.is-open .reviewArrow{
+  transform: rotate(180deg);
+  color:#1b7bff;
+}
+
+/* 상세(아코디언) */
+.reviewDetail{
+  display:none;
+  padding: 24px;
+  background:#fff;
+  border-top: 1px solid rgba(15,23,42,.06);
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+  animation: slideDown 0.2s ease-out;
+}
+
+/* 상세 내부 row (QNA처럼 grid 톤) */
+.reviewDetail .row{
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, .06);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 16px;
+}
+.reviewDetail .row:last-child{ margin-bottom:0; }
+
+.reviewDetail .lb{
+  font-size: 13px;
+  font-weight: 900;
+  color: #64748b;
+  display:flex;
+  align-items:flex-start;
+  padding-top:2px;
+}
+.reviewDetail .val{
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* 이미지들 */
+.reviewImgs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.reviewImgs img{
+  width: 92px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(15,23,42,.08);
+}
+
+/* =========================
+   [끝] 후기게시판(REVIEW)
+   ========================= */
+

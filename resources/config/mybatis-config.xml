@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE configuration
+  PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+
+
+	<properties resource="config/db.properties" />
+	<!-- xml에서 kr.or.ddit.member.vo.MemberVO 이거 치기 귀찮아서 mv로 이름짓는방법 -->
+	
+	<settings>
+        <!-- snake_case → camelCase 자동 변환 -->
+        <setting name="mapUnderscoreToCamelCase" value="true"/>
+    </settings>
+	
+	
+	<typeAliases>
+		<typeAlias type="kr.or.ddit.tct.users.vo.UserVO" alias="uv" />
+		<typeAlias type="kr.or.ddit.tct.product.pkg.vo.PkgVO" alias="pkgvo" />
+		<typeAlias type="kr.or.ddit.tct.product.regProd.vo.RegProdVO" alias="regprodvo" />
+		<typeAlias type="kr.or.ddit.tct.product.dto.vo.RegProDtoVO"	alias="regproddtovo" />
+		<typeAlias type="kr.or.ddit.tct.sales.cart.vo.CartVO" alias="cartvo" />
+		<typeAlias type="kr.or.ddit.tct.sales.cart.dto.vo.CartDetailDtoVO" alias="cartdetail" />
+		<typeAlias type="kr.or.ddit.tct.sales.payment.vo.CancelableInfoVO" alias="cancleable"/>
+		<typeAlias type="kr.or.ddit.tct.admin.payments.vo.AdminPaymentVO" alias="adminpayment"/>
+		<typeAlias type="kr.or.ddit.tct.admin.prod.dto.AdRegImgDtoVO" alias="adregimgdtovo"/>
+		<typeAlias type="kr.or.ddit.tct.admin.prod.item.vo.ItemVO" alias="aditemvo"/>
+		<typeAlias type="kr.or.ddit.tct.board.review.vo.ReviewBoardVO" alias="reviewvo"/>
+		<typeAlias type="kr.or.ddit.tct.board.home.vo.BoardHomePostVO" alias="bhvo"/>
+		<typeAlias type="kr.or.ddit.tct.board.vo.PageInfo"  alias="pinfo" />
+		<typeAlias type="kr.or.ddit.tct.board.qna.vo.QnaVO" alias="qnavo"/>
+		<typeAlias type="kr.or.ddit.tct.product.item.vo.ItemVO" alias="itemvo"/>
+		<typeAlias type="kr.or.ddit.tct.img.vo.ImgStorageVO" alias="isvo"/>
+		<typeAlias type="kr.or.ddit.tct.board.reply.vo.ReplyVO" alias="ReplyVO"/>
+		
+	</typeAliases>
+
+	<environments default="dev">
+		<environment id="dev">
+			<transactionManager type="JDBC" />
+			<dataSource type="POOLED">
+				<property name="driver" value="${driver}" />
+				<property name="url" value="${url}" />
+				<property name="username" value="${username}" />
+				<property name="password" value="${password}" />
+			</dataSource>
+		</environment>
+
+	</environments>
+
+	<mappers>
+		<mapper resource="mapper/users.xml" />
+		<mapper resource="mapper/dashboard.xml" />
+		<mapper resource="mapper/regProd.xml" />
+		<mapper resource="mapper/adProd.xml" />
+		<mapper resource="mapper/cart.xml" />
+		<mapper resource="mapper/payment.xml" />
+		<mapper resource="mapper/email_verify.xml"/>
+		<mapper resource="mapper/wish.xml"/>
+		<mapper resource="mapper/board_home.xml" />
+		<mapper resource="mapper/board_qna.xml"/>
+		<mapper resource="mapper/salesMonthly.xml"/>
+		<mapper resource="mapper/member_statistics.xml" />
+		<mapper resource="mapper/board_review.xml" />
+		<mapper resource="mapper/reply.xml" />
+		<mapper resource="mapper/admin_boards.xml" />
+		<mapper resource="mapper/adPackageMapper.xml" />
+		<mapper resource="mapper/adItem.xml" />
+	</mappers>
+
+
+</configuration>

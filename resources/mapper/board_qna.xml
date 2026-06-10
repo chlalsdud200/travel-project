@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="boardQna">
+
+  <!--
+    [목적]
+    - QNA 목록/상세/등록/수정/삭제 + 관리자답변(등록/수정/삭제)
+
+    [정책]
+    - DB 컬럼명 ↔ VO 필드명 차이는 SQL alias로 흡수한다.
+    - Map parameterType은 사용하지 않는다.
+    - 소프트삭제(DEL_YN='Y')된 글은 사용자 영역에서 “조회/목록/이전다음/마이페이지”에 노출되지 않는다.
+  -->
+
+  <!-- ===================================================== -->
+  <!-- 1) 전체 글 수(페이징 totalRecord 계산용)               -->
+  <!-- ===================================================== -->
+  <select id="getListCount" parameterType="pinfo" resultType="int">
+    SELECT COUNT(*)
+    FROM QNA_BOARD q
+    WHERE 1=1
+      AND q.IS_NOTICE = 'N'            <!-- 의미: 공지는 페이징 목록에서 제외 -->
+      AND NVL(q.DEL_YN,'N') = 'N'      <!-- 의미: 소프트삭제 글은 목록/카운트에서 제외 -->
+
+    <!-- 의미: 검색조건이 있으면 WHERE에 추가 -->
+    <if test="svo != null and svo.stype != null and svo.stype != '' and svo.sword != null and svo.sword != ''">
+      <choose>
+        <when test="svo.stype == 'title'">
+          AND q.QNA_TITLE LIKE '%' || #{svo.sword} || '%'
+        </when>
+        <when test="svo.stype == 'writer'">
+          AND q.USER_ID LIKE '%' || #{svo.sword} || '%'
+        </when>
+        <when test="svo.stype == 'content'">
+          AND q.QNA_CTT LIKE '%' || #{svo.sword} || '%'
+        </when>
+      </choose>
+    </if>
+  </select>
+
+
+  <!-- ===================================================== -->
+  <!-- 1-1) 공지 Top N (Map 대신 QnaNoticeParam 사용)          -->
+  <!-- ===================================================== -->
+  <select id="selectNoticeTop"
+          parameterType="kr.or.ddit.tct.board.qna.vo.QnaNoticeParam"
+          resultType="qnavo">
+
+    SELECT *
+    FROM (
+      SELECT
+        q.QNA_NO     AS qnaNo,         <!-- 의미: VO.qnaNo 매핑 -->
+        q.USER_ID    AS userId,        <!-- 의미: VO.userId 매핑 -->
+        q.QNA_TITLE  AS qnaTitle,      <!-- 의미: VO.qnaTitle 매핑 -->
+
+        u.USER_NAME  AS writerName,    <!-- 의미: 화면 표시용 작성자명 -->
+        u.ROLE       AS writerRole,    <!-- 의미: 화면 표시용 작성자 권한 -->
+
+        TO_CHAR(q.QNA_CREATED, 'YYYY-MM-DD') AS createdAt, <!-- 의미: 화면 표시용 날짜 -->
+        q.QNA_STATUS AS qnaStatus,     <!-- 의미: WAIT/DONE -->
+        q.IS_NOTICE  AS isNotice,      <!-- 의미: 공지여부 -->
+        NVL(q.QNA_HIT, 0) AS hit       <!-- 의미: 조회수 -->
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+      WHERE q.IS_NOTICE = 'Y'
+        AND NVL(q.DEL_YN,'N') = 'N'    <!-- 의미: 삭제된 공지도 노출 금지 -->
+
+      <!-- 의미: 공지에도 검색을 같이 적용하려고 pinfo.svo 유지 -->
+      <if test="pinfo != null and pinfo.svo != null and pinfo.svo.stype != null and pinfo.svo.stype != '' and pinfo.svo.sword != null and pinfo.svo.sword != ''">
+        <choose>
+          <when test="pinfo.svo.stype == 'title'">
+            AND q.QNA_TITLE LIKE '%' || #{pinfo.svo.sword} || '%'
+          </when>
+          <when test="pinfo.svo.stype == 'writer'">
+            AND q.USER_ID LIKE '%' || #{pinfo.svo.sword} || '%'
+          </when>
+          <when test="pinfo.svo.stype == 'content'">
+            AND q.QNA_CTT LIKE '%' || #{pinfo.svo.sword} || '%'
+          </when>
+        </choose>
+      </if>
+
+      ORDER BY q.QNA_CREATED DESC
+    )
+    WHERE ROWNUM <![CDATA[ <= ]]> #{noticeLimit} <!-- 의미: Top N 고정 -->
+  </select>
+
+
+  <!-- ===================================================== -->
+  <!-- 2) 페이징 목록(공지 제외, ROWNUM 페이징)               -->
+  <!-- ===================================================== -->
+  <select id="pageByList" parameterType="pinfo" resultType="qnavo">
+    SELECT A.* FROM (
+      SELECT ROWNUM AS rnum, B.* FROM (
+        SELECT
+          q.QNA_NO     AS qnaNo,
+          q.USER_ID    AS userId,
+          q.QNA_TITLE  AS qnaTitle,
+
+          u.USER_NAME  AS writerName,
+          u.ROLE       AS writerRole,
+
+          TO_CHAR(q.QNA_CREATED, 'YYYY-MM-DD') AS createdAt,
+          q.QNA_STATUS AS qnaStatus,
+          q.IS_NOTICE  AS isNotice,
+          NVL(q.QNA_HIT, 0) AS hit
+        FROM QNA_BOARD q
+        JOIN USERS u ON u.USER_ID = q.USER_ID
+        WHERE 1=1
+          AND q.IS_NOTICE = 'N'          <!-- 의미: 공지는 별도 top 영역에서만 노출 -->
+          AND NVL(q.DEL_YN,'N') = 'N'    <!-- 의미: 삭제된 글은 목록 제외 -->
+
+        <if test="svo != null and svo.stype != null and svo.stype != '' and svo.sword != null and svo.sword != ''">
+          <choose>
+            <when test="svo.stype == 'title'">
+              AND q.QNA_TITLE LIKE '%' || #{svo.sword} || '%'
+            </when>
+            <when test="svo.stype == 'writer'">
+              AND q.USER_ID LIKE '%' || #{svo.sword} || '%'
+            </when>
+            <when test="svo.stype == 'content'">
+              AND q.QNA_CTT LIKE '%' || #{svo.sword} || '%'
+            </when>
+          </choose>
+        </if>
+
+        ORDER BY q.QNA_CREATED DESC
+      ) B
+      <![CDATA[
+        WHERE ROWNUM <= #{end}
+      ]]>
+    ) A
+    <![CDATA[
+      WHERE A.rnum >= #{start}
+    ]]>
+  </select>
+
+
+  <!-- ===================================================== -->
+  <!-- 3) 글 등록                                             -->
+  <!-- ===================================================== -->
+  <insert id="insertQna" parameterType="qnavo">
+    INSERT INTO QNA_BOARD (
+      QNA_NO,
+      USER_ID,
+      QNA_TITLE,
+      QNA_CTT,
+      QNA_CREATED,
+      QNA_HIT,
+      IS_NOTICE,
+      QNA_STATUS
+    ) VALUES (
+      SEQ_QNA_NO.NEXTVAL,   <!-- 의미: PK 시퀀스 -->
+      #{userId},            <!-- 의미: 작성자 ID -->
+      #{qnaTitle},          <!-- 의미: 제목 -->
+      #{qnaCtt},            <!-- 의미: 내용 -->
+      SYSDATE,              <!-- 의미: 작성 시각 -->
+      0,                    <!-- 의미: 조회수 초기값 -->
+      #{isNotice},          <!-- 의미: 공지 여부(Y/N) -->
+      'WAIT'                <!-- 의미: 답변대기부터 시작 -->
+    )
+  </insert>
+
+
+  <!-- ===================================================== -->
+  <!-- 4) 조회수 증가                                         -->
+  <!-- ===================================================== -->
+  <update id="updateHit" parameterType="long">
+    UPDATE QNA_BOARD
+    SET QNA_HIT = QNA_HIT + 1
+    WHERE QNA_NO = #{value}  <!-- 의미: primitive 파라미터 접근은 value -->
+  </update>
+
+
+  <!-- ===================================================== -->
+  <!-- 5) 글 1건 조회(상세/수정 프리필 공용)                  -->
+  <!--    - 답변(ANS_*)까지 같이 내려준다                      -->
+  <!-- ===================================================== -->
+  <select id="selectQnaByNo" parameterType="long" resultType="qnavo">
+    SELECT
+      q.QNA_NO     AS qnaNo,
+      q.QNA_TITLE  AS qnaTitle,
+      q.QNA_CTT    AS qnaCtt,
+      q.USER_ID    AS userId,
+
+      u.USER_NAME  AS writerName,
+      u.ROLE       AS writerRole,
+
+      TO_CHAR(q.QNA_CREATED, 'YYYY-MM-DD') AS createdAt,
+      TO_CHAR(q.QNA_UPDATE,  'YYYY-MM-DD') AS updatedAt,
+
+      NVL(q.QNA_HIT, 0)      AS hit,
+      q.QNA_STATUS           AS qnaStatus,
+      q.IS_NOTICE            AS isNotice,
+
+      q.ANS_CTT              AS ansCtt,
+      TO_CHAR(q.ANS_AT, 'YYYY-MM-DD') AS ansAt
+    FROM QNA_BOARD q
+    LEFT JOIN USERS u ON u.USER_ID = q.USER_ID
+    WHERE q.QNA_NO = #{value}
+      AND NVL(q.DEL_YN,'N') = 'N'   <!-- 의미: 삭제글은 상세도 안 열리게 -->
+  </select>
+
+
+  <!-- ===================================================== -->
+  <!-- 6) 글 삭제(작성자 본인만)                               -->
+  <!-- ===================================================== -->
+  <delete id="deleteQna" parameterType="qnavo">
+    DELETE FROM QNA_BOARD
+    WHERE QNA_NO = #{qnaNo}    <!-- 의미: 어떤 글인지 -->
+      AND USER_ID = #{userId}  <!-- 의미: 작성자 본인 확인 -->
+  </delete>
+
+
+  <!-- ===================================================== -->
+  <!-- 7) 글 수정(작성자 본인만)                               -->
+  <!-- ===================================================== -->
+  <update id="updateQna" parameterType="qnavo">
+    UPDATE QNA_BOARD
+    SET
+      QNA_TITLE  = #{qnaTitle},  <!-- 의미: 수정 제목 -->
+      QNA_CTT    = #{qnaCtt},    <!-- 의미: 수정 내용 -->
+      QNA_UPDATE = SYSDATE       <!-- 의미: 수정일 기록 -->
+    WHERE QNA_NO = #{qnaNo}
+      AND USER_ID = #{userId}
+  </update>
+
+
+  <!-- ===================================================== -->
+  <!-- 8) 이전글 : (공지(Y) 먼저 → 최신순) 기준으로 “바로 위”  -->
+  <!--    - 반드시 DEL_YN='N' 필터 포함                        -->
+  <!-- ===================================================== -->
+  <select id="selectPrevQna" parameterType="long" resultType="qnavo">
+    WITH ordered AS (
+      SELECT
+        q.QNA_NO     AS qnaNo,
+        q.QNA_TITLE  AS qnaTitle,
+        q.USER_ID    AS userId,
+
+        u.USER_NAME  AS writerName,
+        u.ROLE       AS writerRole,
+
+        q.QNA_STATUS AS qnaStatus,
+        q.IS_NOTICE  AS isNotice,
+
+        ROW_NUMBER() OVER(
+          ORDER BY
+            DECODE(q.IS_NOTICE, 'Y', 1, 0) DESC,
+            q.QNA_CREATED DESC,
+            q.QNA_NO DESC
+        ) AS rn
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+      WHERE NVL(q.DEL_YN,'N') = 'N'  <!-- 의미: 삭제글은 이전/다음 네비에서 제외 -->
+    )
+    SELECT qnaNo, qnaTitle, userId, writerName, writerRole, qnaStatus, isNotice
+    FROM ordered
+    WHERE rn = (SELECT rn - 1 FROM ordered WHERE qnaNo = #{value})
+  </select>
+
+
+  <!-- ===================================================== -->
+  <!-- 9) 다음글 : (공지(Y) 먼저 → 최신순) 기준으로 “바로 아래” -->
+  <!--    - 반드시 DEL_YN='N' 필터 포함                        -->
+  <!-- ===================================================== -->
+  <select id="selectNextQna" parameterType="long" resultType="qnavo">
+    WITH ordered AS (
+      SELECT
+        q.QNA_NO     AS qnaNo,
+        q.QNA_TITLE  AS qnaTitle,
+        q.USER_ID    AS userId,
+
+        u.USER_NAME  AS writerName,
+        u.ROLE       AS writerRole,
+
+        q.QNA_STATUS AS qnaStatus,
+        q.IS_NOTICE  AS isNotice,
+
+        ROW_NUMBER() OVER(
+          ORDER BY
+            DECODE(q.IS_NOTICE, 'Y', 1, 0) DESC,
+            q.QNA_CREATED DESC,
+            q.QNA_NO DESC
+        ) AS rn
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+      WHERE NVL(q.DEL_YN,'N') = 'N'  <!-- 의미: 삭제글은 이전/다음 네비에서 제외 -->
+    )
+    SELECT qnaNo, qnaTitle, userId, writerName, writerRole, qnaStatus, isNotice
+    FROM ordered
+    WHERE rn = (SELECT rn + 1 FROM ordered WHERE qnaNo = #{value})
+  </select>
+
+
+  <!-- ===================================================== -->
+  <!-- 10) 관리자 답변 기능                                    -->
+  <!--     - 테이블 추가 없이 QNA_BOARD.ANS_CTT / ANS_AT / STATUS -->
+  <!-- ===================================================== -->
+
+  <!-- 답변 등록 -->
+  <update id="answerInsert" parameterType="qnavo">
+    UPDATE QNA_BOARD
+    SET
+      ANS_CTT    = #{ansCtt},   <!-- 의미: 답변 내용 저장 -->
+      ANS_AT     = SYSDATE,     <!-- 의미: 답변 작성 시각 -->
+      QNA_STATUS = 'DONE'       <!-- 의미: 답변이 존재하면 완료 -->
+    WHERE QNA_NO = #{qnaNo}
+  </update>
+
+  <!-- 답변 수정 -->
+  <update id="answerUpdate" parameterType="qnavo">
+    UPDATE QNA_BOARD
+    SET
+      ANS_CTT    = #{ansCtt},   <!-- 의미: 답변 내용 교체 -->
+      ANS_AT     = SYSDATE,     <!-- 의미: 수정 시각 갱신 -->
+      QNA_STATUS = 'DONE'
+    WHERE QNA_NO = #{qnaNo}
+  </update>
+
+  <!-- 답변 삭제 -->
+  <update id="answerDelete" parameterType="qnavo">
+    UPDATE QNA_BOARD
+    SET
+      ANS_CTT    = NULL,        <!-- 의미: 답변 제거 -->
+      ANS_AT     = NULL,        <!-- 의미: 답변 시각 제거 -->
+      QNA_STATUS = 'WAIT'       <!-- 의미: 답변이 없으면 대기로 환원 -->
+    WHERE QNA_NO = #{qnaNo}
+  </update>
+
+
+  <!-- ===================================================== -->
+  <!-- [추가] 마이페이지: 로그인 사용자의 QNA 목록              -->
+  <!-- ===================================================== -->
+  <select id="selectMyQnaList" parameterType="string" resultType="qnavo">
+  SELECT
+    x.qnaNo,
+    x.qnaTitle,
+    x.qnaCtt,
+    x.userId,
+    x.createdAt,
+    x.qnaStatus,
+    x.ansCtt,
+    x.ansAt,
+    x.displayNo
+  FROM (
+    SELECT
+      q.QNA_NO    AS qnaNo,
+      q.QNA_TITLE AS qnaTitle,
+      q.QNA_CTT   AS qnaCtt,
+      q.USER_ID   AS userId,
+      TO_CHAR(q.QNA_CREATED, 'YYYY-MM-DD') AS createdAt,
+
+      /* 의미: 답변이 있으면 DONE, 없으면 WAIT */
+      CASE
+        WHEN q.ANS_CTT IS NULL OR TRIM(q.ANS_CTT) = '' THEN 'WAIT'
+        ELSE 'DONE'
+      END AS qnaStatus,
+
+      q.ANS_CTT AS ansCtt,
+      TO_CHAR(q.ANS_AT, 'YYYY-MM-DD') AS ansAt,
+
+      /* ✅ 의미: 게시판 문의목록과 동일한 "화면용 번호(공백 없는 순번)" */
+      /* ✅ 존재이유: DB qnaNo(식별자)는 공백이 생길 수 있으니, 목록 표시번호는 삭제 여부에 따라 자동으로 당겨지게 맞추기 위함 */
+      (COUNT(*) OVER()
+        - ROW_NUMBER() OVER(ORDER BY q.QNA_CREATED DESC, q.QNA_NO DESC)
+        + 1
+      ) AS displayNo
+
+    FROM QNA_BOARD q
+    WHERE q.IS_NOTICE = 'N'
+      AND NVL(q.DEL_YN,'N') = 'N'   <!-- 의미: 삭제글은 게시판/마이페이지 모두 숨김(공통 정책) -->
+  ) x
+  WHERE x.userId = #{value}
+  ORDER BY x.qnaNo DESC
+</select>
+
+
+</mapper>

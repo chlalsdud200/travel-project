@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="adminBoards">
+
+  <!--
+    [존재이유]
+    - 관리자 게시판관리 1화면에서 (공지/문의/리뷰)를 같은 컬럼 구조로 조회하려고
+      QNA_BOARD + REVIEW_BOARD를 공통 posts CTE로 합쳐서 사용한다.
+    - QNA_BOARD는 IS_NOTICE='Y'면 NOTICE로, 아니면 QNA로 "타입 자체를 분리"한다.
+  -->
+
+  <!-- 1) 조건에 맞는 전체 건수 -->
+  <select id="countAdminBoards"
+          parameterType="kr.or.ddit.tct.admin.boards.vo.AdminBoardSearchVO"
+          resultType="int">
+
+    WITH posts AS (
+      <!-- (A) QNA_BOARD → NOTICE/QNA 로 타입 분리 -->
+      SELECT
+        CASE WHEN q.IS_NOTICE = 'Y' THEN 'NOTICE' ELSE 'QNA' END AS postType,  <!-- 의미: 공지면 NOTICE, 아니면 QNA -->
+        q.QNA_NO           AS postNo,
+        q.QNA_TITLE        AS title,
+        q.QNA_CTT          AS content,
+        q.USER_ID          AS userId,
+        u.USER_NAME        AS writerName,
+        u.ROLE             AS writerRole,
+        q.QNA_CREATED      AS createdAt,
+        NVL(q.QNA_HIT,0)   AS hit,
+        q.QNA_STATUS       AS qnaStatus,
+        q.IS_NOTICE        AS isNotice,
+        q.ANS_CTT          AS ansCtt,
+        q.ANS_AT           AS ansAt,
+        CAST(NULL AS NUMBER)        AS reviewRating,
+        CAST(NULL AS VARCHAR2(50))  AS orderNo
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+
+      UNION ALL
+
+      <!-- (B) REVIEW_BOARD -->
+      SELECT
+        'REVIEW'           AS postType,   <!-- 의미: 리뷰는 항상 REVIEW -->
+        r.REVIEW_NO        AS postNo,
+        r.REVIEW_TITLE     AS title,
+        r.REVIEW_CTT       AS content,
+        r.USER_ID          AS userId,
+        u.USER_NAME        AS writerName,
+        u.ROLE             AS writerRole,
+        r.REVIEW_CREATED   AS createdAt,
+        NVL(r.REVIEW_HIT,0) AS hit,
+        CAST(NULL AS VARCHAR2(20))  AS qnaStatus,
+        CAST(NULL AS VARCHAR2(1))   AS isNotice,
+        CAST(NULL AS VARCHAR2(4000)) AS ansCtt,
+        CAST(NULL AS DATE)          AS ansAt,
+        r.REVIEW_RATING    AS reviewRating,
+        r.ORDER_NO         AS orderNo
+      FROM REVIEW_BOARD r
+      JOIN USERS u ON u.USER_ID = r.USER_ID
+    )
+    SELECT COUNT(*)
+    FROM posts p
+    WHERE 1=1
+
+    <!-- kind: ALL/NOTICE/QNA/REVIEW -->
+    <if test="kind != null and kind != '' and kind != 'ALL'">
+      AND p.postType = #{kind}
+    </if>
+
+    <!-- 기간 -->
+    <if test="from != null and from != ''">
+      AND p.createdAt >= TO_DATE(#{from}, 'YYYY-MM-DD')
+    </if>
+    <if test="to != null and to != ''">
+      AND p.createdAt <![CDATA[ < ]]> TO_DATE(#{to}, 'YYYY-MM-DD') + 1
+    </if>
+
+    <!-- [핵심 정책] QNA(문의글) = 회원(USER) 글만 -->
+    <if test="kind == 'QNA'">
+      AND UPPER(p.writerRole) = 'USER'
+    </if>
+
+    <!-- [핵심 정책] NOTICE(공지) = 관리자(ADMIN) 글만 -->
+    <if test="kind == 'NOTICE'">
+      AND UPPER(p.writerRole) = 'ADMIN'
+    </if>
+
+    <!-- role: ALL/ADMIN/USER (단, QNA/NOTICE는 위 정책이 우선 적용됨) -->
+    <if test="role != null and role != '' and role != 'ALL'">
+      AND UPPER(p.writerRole) = UPPER(#{role})
+    </if>
+
+    <!-- 키워드 -->
+    <if test="q != null and q != ''">
+      <choose>
+        <!-- 아무것도 선택 안 했을 때: 통합검색(제목/내용/작성자) -->
+        <when test="stype == null or stype == '' or stype == 'all'">
+          AND (
+            p.title       LIKE '%' || #{q} || '%'
+            OR p.content  LIKE '%' || #{q} || '%'
+            OR p.userId   LIKE '%' || #{q} || '%'
+            OR p.writerName LIKE '%' || #{q} || '%'
+          )
+        </when>
+
+        <when test="stype == 'title'">
+          AND p.title LIKE '%' || #{q} || '%'
+        </when>
+
+        <when test="stype == 'writer'">
+          AND (p.userId LIKE '%' || #{q} || '%' OR p.writerName LIKE '%' || #{q} || '%')
+        </when>
+
+        <otherwise>
+          AND p.content LIKE '%' || #{q} || '%'
+        </otherwise>
+      </choose>
+    </if>
+
+  </select>
+
+
+  <!-- 2) 목록(ROW_NUMBER로 페이징) -->
+  <select id="selectAdminBoards"
+          parameterType="kr.or.ddit.tct.admin.boards.vo.AdminBoardSearchVO"
+          resultType="kr.or.ddit.tct.admin.boards.vo.AdminBoardPostVO">
+
+    WITH posts AS (
+      SELECT
+        CASE WHEN q.IS_NOTICE = 'Y' THEN 'NOTICE' ELSE 'QNA' END AS postType,
+        q.QNA_NO           AS postNo,
+        q.QNA_TITLE        AS title,
+        q.QNA_CTT          AS content,
+        q.USER_ID          AS userId,
+        u.USER_NAME        AS writerName,
+        u.ROLE             AS writerRole,
+        q.QNA_CREATED      AS createdAt,
+        NVL(q.QNA_HIT,0)   AS hit,
+        q.QNA_STATUS       AS qnaStatus,
+        q.IS_NOTICE        AS isNotice,
+        q.ANS_CTT          AS ansCtt,
+        q.ANS_AT           AS ansAt,
+        CAST(NULL AS NUMBER)        AS reviewRating,
+        CAST(NULL AS VARCHAR2(50))  AS orderNo
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+
+      UNION ALL
+
+      SELECT
+        'REVIEW'           AS postType,
+        r.REVIEW_NO        AS postNo,
+        r.REVIEW_TITLE     AS title,
+        r.REVIEW_CTT       AS content,
+        r.USER_ID          AS userId,
+        u.USER_NAME        AS writerName,
+        u.ROLE             AS writerRole,
+        r.REVIEW_CREATED   AS createdAt,
+        NVL(r.REVIEW_HIT,0) AS hit,
+        CAST(NULL AS VARCHAR2(20))  AS qnaStatus,
+        CAST(NULL AS VARCHAR2(1))   AS isNotice,
+        CAST(NULL AS VARCHAR2(4000)) AS ansCtt,
+        CAST(NULL AS DATE)          AS ansAt,
+        r.REVIEW_RATING    AS reviewRating,
+        r.ORDER_NO         AS orderNo
+      FROM REVIEW_BOARD r
+      JOIN USERS u ON u.USER_ID = r.USER_ID
+    )
+
+    SELECT *
+    FROM (
+      SELECT
+        p.postType,
+        p.postNo,
+        p.title,
+        p.userId,
+        p.writerName,
+        p.writerRole,
+        TO_CHAR(p.createdAt, 'YYYY-MM-DD') AS createdAtStr,
+        p.hit,
+        p.qnaStatus,
+        p.isNotice,
+        p.reviewRating,
+        p.orderNo,
+        ROW_NUMBER() OVER(ORDER BY p.createdAt DESC, p.postNo DESC) AS rn
+      FROM posts p
+      WHERE 1=1
+
+      <if test="kind != null and kind != '' and kind != 'ALL'">
+        AND p.postType = #{kind}
+      </if>
+
+      <if test="from != null and from != ''">
+        AND p.createdAt >= TO_DATE(#{from}, 'YYYY-MM-DD')
+      </if>
+      <if test="to != null and to != ''">
+        AND p.createdAt <![CDATA[ < ]]> TO_DATE(#{to}, 'YYYY-MM-DD') + 1
+      </if>
+
+      <!-- QNA는 USER만 -->
+      <if test="kind == 'QNA'">
+        AND UPPER(p.writerRole) = 'USER'
+      </if>
+
+      <!-- NOTICE는 ADMIN만 -->
+      <if test="kind == 'NOTICE'">
+        AND UPPER(p.writerRole) = 'ADMIN'
+      </if>
+
+      <if test="role != null and role != '' and role != 'ALL'">
+        AND UPPER(p.writerRole) = UPPER(#{role})
+      </if>
+
+      <if test="q != null and q != ''">
+        <choose>
+          <when test="stype == null or stype == '' or stype == 'all'">
+            AND (
+              p.title       LIKE '%' || #{q} || '%'
+              OR p.content  LIKE '%' || #{q} || '%'
+              OR p.userId   LIKE '%' || #{q} || '%'
+              OR p.writerName LIKE '%' || #{q} || '%'
+            )
+          </when>
+          <when test="stype == 'title'">
+            AND p.title LIKE '%' || #{q} || '%'
+          </when>
+          <when test="stype == 'writer'">
+            AND (p.userId LIKE '%' || #{q} || '%' OR p.writerName LIKE '%' || #{q} || '%')
+          </when>
+          <otherwise>
+            AND p.content LIKE '%' || #{q} || '%'
+          </otherwise>
+        </choose>
+      </if>
+
+    )
+    WHERE rn BETWEEN #{startRow} AND #{endRow}
+    ORDER BY rn
+
+  </select>
+
+
+  <!-- 3) 상세 1건(NOTICE/QNA/REVIEW 공용) -->
+  <select id="selectAdminBoardDetail"
+          parameterType="kr.or.ddit.tct.admin.boards.vo.AdminBoardKeyVO"
+          resultType="kr.or.ddit.tct.admin.boards.vo.AdminBoardPostVO">
+
+    WITH posts AS (
+      SELECT
+        CASE WHEN q.IS_NOTICE = 'Y' THEN 'NOTICE' ELSE 'QNA' END AS postType,
+        q.QNA_NO           AS postNo,
+        q.QNA_TITLE        AS title,
+        q.QNA_CTT          AS content,
+        q.USER_ID          AS userId,
+        u.USER_NAME        AS writerName,
+        u.ROLE             AS writerRole,
+        TO_CHAR(q.QNA_CREATED, 'YYYY-MM-DD') AS createdAtStr,
+        NVL(q.QNA_HIT,0)   AS hit,
+        q.QNA_STATUS       AS qnaStatus,
+        q.IS_NOTICE        AS isNotice,
+        q.ANS_CTT          AS ansCtt,
+        TO_CHAR(q.ANS_AT, 'YYYY-MM-DD') AS ansAtStr,
+        CAST(NULL AS NUMBER)        AS reviewRating,
+        CAST(NULL AS VARCHAR2(50))  AS orderNo
+      FROM QNA_BOARD q
+      JOIN USERS u ON u.USER_ID = q.USER_ID
+
+      UNION ALL
+
+      SELECT
+        'REVIEW'           AS postType,
+        r.REVIEW_NO        AS postNo,
+        r.REVIEW_TITLE     AS title,
+        r.REVIEW_CTT       AS content,
+        r.USER_ID          AS userId,
+        u.USER_NAME        AS writerName,
+        u.ROLE             AS writerRole,
+        TO_CHAR(r.REVIEW_CREATED, 'YYYY-MM-DD') AS createdAtStr,
+        NVL(r.REVIEW_HIT,0) AS hit,
+        CAST(NULL AS VARCHAR2(20))  AS qnaStatus,
+        CAST(NULL AS VARCHAR2(1))   AS isNotice,
+        CAST(NULL AS VARCHAR2(4000)) AS ansCtt,
+        CAST(NULL AS VARCHAR2(20))  AS ansAtStr,
+        r.REVIEW_RATING    AS reviewRating,
+        r.ORDER_NO         AS orderNo
+      FROM REVIEW_BOARD r
+      JOIN USERS u ON u.USER_ID = r.USER_ID
+    )
+    SELECT *
+    FROM posts
+    WHERE postType = #{postType}
+      AND postNo   = #{postNo}
+
+  </select>
+
+
+  <!-- ===================================================== -->
+  <!-- 4) 관리자: 비활성화(SOFT DELETE)                        -->
+  <!--    - 글을 숨김 처리(DEL_YN='Y') 해서 일반 게시판에서는 안 보이게 -->
+  <!-- ===================================================== -->
+
+  <update id="softDeleteQna" parameterType="map">
+    UPDATE QNA_BOARD
+    SET
+      DEL_YN = 'Y',         <!-- 의미: 삭제 플래그(숨김 처리) -->
+      DEL_AT = SYSDATE,     <!-- 의미: 삭제(숨김) 처리 시각 -->
+      DEL_BY = #{adminId}   <!-- 의미: 처리한 관리자 ID -->
+    WHERE QNA_NO = #{postNo} <!-- 의미: 대상 글 번호(공지/문의 모두 QNA_BOARD) -->
+  </update>
+
+  <update id="softDeleteReview" parameterType="map">
+    UPDATE REVIEW_BOARD
+    SET
+      DEL_YN = 'Y',         <!-- 의미: 삭제 플래그(숨김 처리) -->
+      DEL_AT = SYSDATE,     <!-- 의미: 삭제(숨김) 처리 시각 -->
+      DEL_BY = #{adminId}   <!-- 의미: 처리한 관리자 ID -->
+    WHERE REVIEW_NO = #{postNo} <!-- 의미: 대상 리뷰 글 번호 -->
+  </update>
+
+
+  <!-- ===================================================== -->
+  <!-- 5) 관리자: 영구삭제(HARD DELETE)                        -->
+  <!--    - FK 때문에 댓글(REPLY) 먼저 삭제 후 글 삭제         -->
+  <!-- ===================================================== -->
+
+  <delete id="hardDeleteQnaReplies" parameterType="int">
+    DELETE FROM REPLY
+    WHERE QNA_NO = #{value}  <!-- 의미: FK_REPLY_QNA 때문에 부모글(QNA) 삭제 전에 선삭제 -->
+  </delete>
+
+  <delete id="hardDeleteQna" parameterType="int">
+    DELETE FROM QNA_BOARD
+    WHERE QNA_NO = #{value}  <!-- 의미: 실제 QNA/NOTICE 레코드 영구 제거 -->
+  </delete>
+
+  <delete id="hardDeleteReviewReplies" parameterType="int">
+    DELETE FROM REPLY
+    WHERE REVIEW_NO = #{value} <!-- 의미: FK_REPLY_REVIEW 때문에 부모글(REVIEW) 삭제 전에 선삭제 -->
+  </delete>
+
+  <delete id="hardDeleteReview" parameterType="int">
+    DELETE FROM REVIEW_BOARD
+    WHERE REVIEW_NO = #{value} <!-- 의미: 실제 리뷰 레코드 영구 제거 -->
+  </delete>
+
+
+
+
+</mapper>

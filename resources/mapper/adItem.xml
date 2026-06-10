@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="aditem">
+
+	<!-- 등록 -->
+	<insert id="insertItem" parameterType="aditemvo">
+	  INSERT INTO ITEM (ITEM_ID, ITEM_TITLE, LOC_ID, THEME_ID)
+	  VALUES (#{itemId}, #{itemTitle}, #{locId}, #{themeId})
+	</insert>
+	
+	<!-- 목록조회 -->
+	<select id="selectItemAll" resultType="aditemvo">
+	  SELECT ITEM_ID    AS itemId,
+	         ITEM_TITLE AS itemTitle,
+	         LOC_ID     AS locId,
+	         THEME_ID   AS themeId
+	  FROM ITEM
+	  ORDER BY ITEM_ID DESC
+	</select>
+
+	<!-- 삭제 -->
+	<delete id="deleteItem" parameterType="string">
+	  DELETE FROM ITEM
+	  WHERE ITEM_ID = #{value}
+	</delete>
+
+</mapper>

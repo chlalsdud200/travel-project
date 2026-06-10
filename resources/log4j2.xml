@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+
+  <Appenders>
+    <Console name="Console" target="SYSTEM_OUT">
+      <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+    </Console>
+    
+    <File name="MyFile" fileName="Logs/app.log">
+      <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>	<!-- %t는 스레드이름 -->
+    </File>
+  </Appenders>
+
+  <Loggers>
+  	<Logger name="myboard" level="TRACE" additivity="false">
+        <AppenderRef ref="Console"/>
+  </Logger>
+
+    <Root level="trace">
+      <AppenderRef ref="Console"/>
+    </Root>
+  </Loggers>
+
+</Configuration>
+
